@@ -1,0 +1,9 @@
+Type: Jupyter Notebook Extension
+Compatibility: 3.x, 4.x, 5.x, 6.x
+Name: Notate
+Main: main.js
+Link: README.md
+Description: |
+  This extension allows you to write and draw in the margins and cells of a Jupiter notebook.
+Parameters:
+- none
