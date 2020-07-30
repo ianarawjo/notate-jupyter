@@ -3,6 +3,9 @@ define([
     'base/js/events'
     ], function(Jupyter, events) {
 
+      // For keeping track of canvases and copy-paste function:
+      var canvases = {};
+
       // Web socket for sending canvas data on change
       var socket = new NotateWebSocket();
 
@@ -53,6 +56,7 @@ define([
             // Send updates over NotateWebSocket:
             notate_canvas.attachSocket(socket);
 
+            return notate_canvas;
         }
 
         //     // Initialise application
@@ -117,13 +121,13 @@ define([
         // Attach the canvas-tear event handler
         code_cells.forEach(function (cell, i) {
             cm = cell.code_mirror;
-            cm.addKeyMap({"Ctrl-Enter":function(cm) {
+            let insert_canvas = function(cm) {
 
                 // Create new canvas element + setup
-                var canvas = create_canvas();
+                let canvas = create_canvas();
 
                 // Clear bg
-                var ctx = canvas.getContext("2d");
+                let ctx = canvas.getContext("2d");
                 ctx.globalAlpha = 0.4;
                 ctx.fillStyle = "#FFFFFF";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -131,15 +135,49 @@ define([
 
                 // Put canvas at cursor position
                 cursorPos = cm.getCursor();
-                cm.replaceRange("_", cursorPos); // Insert a dummy character at cursor position
+                dummy_idx = "__c_" + Object.keys(canvases).length + "__";
+                cm.replaceRange(dummy_idx, cursorPos); // Insert a dummy character at cursor position
                 cm.markText({"line":cursorPos.line, "ch":cursorPos.ch}, // replace it with canvas
-                            {"line":cursorPos.line, "ch":cursorPos.ch+1},
+                            {"line":cursorPos.line, "ch":cursorPos.ch+dummy_idx.length},
                             {replacedWith:canvas});
 
-                // Attach event handlers
-                attach_handlers(canvas);
+                return {canvas:canvas, idx:dummy_idx};
+            };
 
+            // Insert new canvas on Ctrl+Enter key press:
+            cm.addKeyMap({"Ctrl-Enter":function(cm) {
+                // Create new canvas and insert at cursor position
+                let c = insert_canvas(cm);
+
+                // Attach event handlers
+                let notate_canvas = attach_handlers(c.canvas);
+
+                // Index canvas for future reference
+                canvases[c.idx] = notate_canvas;
             }});
+
+
+            cm.on('paste', function(cm, event) {
+                txt = event.clipboardData.getData("text")
+                console.log("pasted!", txt);
+                if (txt in canvases) { // If the pasted text is a NotateCanvas id...
+                    event.preventDefault();
+                    console.log(txt.substring(4, txt.length-6+4));
+
+                    // Create new canvas and insert at cursor position
+                    let insertEvent = insert_canvas(cm);
+                    let newDOMCanvas = insertEvent.canvas;
+                    let dummy_idx = insertEvent.idx;
+
+                    // Clone copied NotateCanvas, using new DOM canvas
+                    clonedNotateCanvas = canvases[txt].clone(newDOMCanvas);
+                    // Add cloned canvas to manager
+                    NotateCanvasManager.add(clonedNotateCanvas);
+
+                    // Index canvas for future reference
+                    canvases[dummy_idx] = clonedNotateCanvas;
+                };
+            });
         });
 
         // Add a canvas to the top-level notebook panel element
@@ -197,6 +235,9 @@ var NotateCanvasManager = (function() {
             canvases.push( new NotateCanvas(canvas) );
             return canvases[canvases.length-1];
         },
+        add: function(notateCanvas) {
+            canvases.push( notateCanvas );
+        },
         remove: function(canvas) {
             for (var i = 0; i < canvases.length; i++) {
                 if (canvases[i].canvas.id === canvas.id) {
@@ -212,6 +253,17 @@ var NotateCanvasManager = (function() {
 // A NotateCanvas wraps a canvas and takes care of setting up
 // all the basic drawing events for different platforms.
 class NotateCanvas {
+    clone(new_canvas_element) { // Clone this NotateCanvas, e.g. to duplicate the HTML canvas.
+        var c = new NotateCanvas(new_canvas_element);
+        c.strokes = JSON.parse(JSON.stringify(this.strokes)); // deep copy stroke data
+        c.resolution = this.resolution;
+        c.bg_color = this.bg_color;
+        c.bg_opacity = this.bg_opacity;
+        c.default_linewidth = this.default_linewidth;
+        c.clear();
+        c.draw();
+        return c;
+    }
     constructor(canvas_element) {
         this.strokes = [];
         this.canvas = canvas_element;
@@ -324,7 +376,7 @@ class NotateCanvas {
         }
     }
     draw() {
-        this.strokes.forEach(this.drawStroke);
+        this.strokes.forEach(this.drawStroke.bind(this));
     }
     drawStroke(s) {
         if (!('pts' in s) || s.pts.length === 0) {
