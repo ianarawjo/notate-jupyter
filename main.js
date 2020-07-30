@@ -40,7 +40,8 @@ define([
             canvas.style.verticalAlign = "middle";
             canvas.style.zIndex = 3; // 2 is the code blocks
             canvas.style.cursor = "default";
-	    canvas.style.touchAction = "none";
+            canvas.style.border = "thin solid #aaa";
+	          canvas.style.touchAction = "none";
             return canvas;
         }
 
@@ -234,6 +235,9 @@ class NotateCanvas {
             if (e.pointerId in this.new_strokes) {
                 console.warn('A stroke is already being drawn with this id. Did you forget to cancel?');
                 return;
+            } else if (e.pointerType === "touch") {
+                this.canvas.style.border = "thick solid #000000"
+                return;
             }
 
             // Create new stroke and attach reference
@@ -267,7 +271,7 @@ class NotateCanvas {
                 if (this.socket) {
                     this.socket.sendDrawing(this.strokes, this.canvas.id);
                 }
-            }
+            } else this.canvas.style.border = "thin solid #aaa";
         }.bind(this);
         this.canvas.addEventListener('pointerdown', pointerDown);
         this.canvas.addEventListener('pointermove', pointerMove);
