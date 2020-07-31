@@ -32,19 +32,27 @@ define([
         console.log("Hello");
 
         // Canvas generation functions
-        function create_canvas() {
+        function create_canvas(width, height) {
             var canvas = document.createElement('canvas');
             canvas.id = 'notate-canvas';
-            canvas.width  = 600;
-            canvas.height = 240;
-            canvas.style.width  = "300px";
-            canvas.style.height = "120px";
+            canvas.width  = width;
+            canvas.height = height;
+            canvas.style.width  = width/2 + "px";
+            canvas.style.height = height/2 + "px";
             canvas.style.display = "inline-block";
             canvas.style.verticalAlign = "middle";
             canvas.style.zIndex = 3; // 2 is the code blocks
             canvas.style.cursor = "default";
             canvas.style.border = "thin solid #aaa";
-	          canvas.style.touchAction = "none";
+	        canvas.style.touchAction = "none";
+
+            // Clear bg
+            let ctx = canvas.getContext("2d");
+            ctx.globalAlpha = 0.4;
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalAlpha = 1.0;
+
             return canvas;
         }
 
@@ -121,17 +129,7 @@ define([
         // Attach the canvas-tear event handler
         code_cells.forEach(function (cell, i) {
             cm = cell.code_mirror;
-            let insert_canvas = function(cm) {
-
-                // Create new canvas element + setup
-                let canvas = create_canvas();
-
-                // Clear bg
-                let ctx = canvas.getContext("2d");
-                ctx.globalAlpha = 0.4;
-                ctx.fillStyle = "#FFFFFF";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.globalAlpha = 1.0;
+            let insert_canvas = function(cm, canvas) {
 
                 // Put canvas at cursor position
                 cursorPos = cm.getCursor();
@@ -146,11 +144,14 @@ define([
 
             // Insert new canvas on Ctrl+Enter key press:
             cm.addKeyMap({"Ctrl-Enter":function(cm) {
-                // Create new canvas and insert at cursor position
-                let c = insert_canvas(cm);
+                // Create new canvas element + setup
+                let canvas = create_canvas(600, 240);
 
                 // Attach event handlers
-                let notate_canvas = attach_handlers(c.canvas);
+                let notate_canvas = attach_handlers(canvas);
+
+                // Insert canvas at cursor position
+                let c = insert_canvas(cm, canvas);
 
                 // Index canvas for future reference
                 canvases[c.idx] = notate_canvas;
@@ -164,15 +165,17 @@ define([
                     event.preventDefault();
                     console.log(txt.substring(4, txt.length-6+4));
 
-                    // Create new canvas and insert at cursor position
-                    let insertEvent = insert_canvas(cm);
-                    let newDOMCanvas = insertEvent.canvas;
-                    let dummy_idx = insertEvent.idx;
+                    // Create new canvas element + setup
+                    let canvas = create_canvas(600, 240);
 
                     // Clone copied NotateCanvas, using new DOM canvas
-                    clonedNotateCanvas = canvases[txt].clone(newDOMCanvas);
+                    clonedNotateCanvas = canvases[txt].clone(canvas);
                     // Add cloned canvas to manager
                     NotateCanvasManager.add(clonedNotateCanvas);
+
+                    // Insert canvas at cursor position
+                    let insertEvent = insert_canvas(cm, canvas);
+                    let dummy_idx = insertEvent.idx;
 
                     // Index canvas for future reference
                     canvases[dummy_idx] = clonedNotateCanvas;
@@ -255,6 +258,10 @@ var NotateCanvasManager = (function() {
 class NotateCanvas {
     clone(new_canvas_element) { // Clone this NotateCanvas, e.g. to duplicate the HTML canvas.
         var c = new NotateCanvas(new_canvas_element);
+        c.canvas.width = this.canvas.width;
+        c.canvas.height = this.canvas.height;
+        c.canvas.style.width = this.canvas.style.width;
+        c.canvas.style.height = this.canvas.style.height;
         c.strokes = JSON.parse(JSON.stringify(this.strokes)); // deep copy stroke data
         c.resolution = this.resolution;
         c.bg_color = this.bg_color;
@@ -281,11 +288,19 @@ class NotateCanvas {
         this.bg_opacity = 0.4;
         this.default_linewidth = default_linewidth;
 
+        this.resizing = false;
+        this.mouse_down = false;
+
         this.new_strokes = {};
 
         // Attach pointer event listeners
         let pointerDown = function pointerDown(e) {
-            if (e.pointerId in this.new_strokes) {
+            if (this.resizing === true && e.pointerType === "mouse") {
+                this.mouse_down = true;
+                e.preventDefault();
+                return;
+            }
+            else if (e.pointerId in this.new_strokes) {
                 console.warn('A stroke is already being drawn with this id. Did you forget to cancel?');
                 return;
             } else if (e.pointerType === "touch") {
@@ -294,25 +309,51 @@ class NotateCanvas {
             }
 
             // Create new stroke and attach reference
-            var s = { pts: [this.getPointerValue(e)], weight:default_linewidth, color:default_color };
+            let s = { pts: [this.getPointerValue(e)], weight:default_linewidth, color:default_color };
             this.new_strokes[e.pointerId] = s;
 
             this.drawStroke(s);
         }.bind(this);
         let pointerMove = function pointerMove(e) {
+            let pos = this.getPointerValue(e);
+
             // Ensure pointer event is being tracked, if not, err:
             if (e.pointerId in this.new_strokes) {
 
                 // Add point to end of stroke:
-                this.new_strokes[e.pointerId].pts.push( this.getPointerValue(e) );
+                this.new_strokes[e.pointerId].pts.push( pos );
 
                 // Draw new line of stroke:
                 this.drawStroke( { pts:this.new_strokes[e.pointerId].pts.slice(-2),
                                  width:this.new_strokes[e.pointerId].weight,
                                  color:this.new_strokes[e.pointerId].color });
+            } else if (this.mouse_down && this.resizing) {
+
+                // Resize canvas from bottom-right corner:
+                this.canvas.style.width = Math.floor(e.offsetX + 30) + "px";
+                this.canvas.style.height = Math.floor(e.offsetY + 30) + "px";
+                this.canvas.width = Math.floor(e.offsetX + 30) * 2;
+                this.canvas.height = Math.floor(e.offsetY + 30) * 2;
+                console.log("moving");
+                this.draw();
+                e.preventDefault();
+
+            } else {
+
+                if (pos.x >= this.canvas.width - 30 && pos.y >= this.canvas.height - 30) {
+                    this.canvas.style.cursor = "se-resize";
+                    this.resizing = true;
+                }
+                else {
+                    this.canvas.style.cursor = "auto";
+                    this.resizing = false;
+                }
             }
         }.bind(this);
         let pointerCancel = function pointerLeave(e) {
+            if (e.pointerType === "mouse")
+                this.mouse_down = false;
+
             // Ensure pointer event is being tracked, if not, err:
             if (e.pointerId in this.new_strokes) {
 
@@ -324,7 +365,11 @@ class NotateCanvas {
                 if (this.socket) {
                     this.socket.sendDrawing(this.strokes, this.canvas.id);
                 }
-            } else this.canvas.style.border = "thin solid #aaa";
+            } else {
+                this.canvas.style.border = "thin solid #aaa";
+                this.canvas.style.cursor = "auto";
+                this.resizing = false;
+            }
         }.bind(this);
         this.canvas.addEventListener('pointerdown', pointerDown);
         this.canvas.addEventListener('pointermove', pointerMove);
