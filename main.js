@@ -275,7 +275,8 @@ class NotateCanvas {
         const default_linewidth = 2;
         const default_color = '#555';
         this.resolution = 2;
-        this.pos = { x:this.canvas.offsetLeft, y:this.canvas.offsetTop };
+        // this.pos = { x:this.canvas.offsetLeft, y:this.canvas.offsetTop };
+        this.pos = { x:0, y:0 };
         this.bg_color = '#fff';
         this.bg_opacity = 0.4;
         this.default_linewidth = default_linewidth;
