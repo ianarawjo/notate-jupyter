@@ -1,7 +1,9 @@
 define([
+    'require',
+    'jquery',
     'base/js/namespace',
     'base/js/events'
-    ], function(Jupyter, events) {
+   ], function(requirejs, $, Jupyter, events) {
 
       // For keeping track of canvases and copy-paste function:
       var canvases = {};
@@ -26,10 +28,20 @@ define([
           ])
       };
 
+      var initialize = function () {
+        // == Add any relative css to the page ==
+        // Add Font Awesome 4.7 Icons:
+        $('<link/>')
+            .attr({
+                rel: 'stylesheet',
+                type: 'text/css',
+                href: requirejs.toUrl('./css/font-awesome.min.css')
+            })
+            .appendTo('head');
+      };
+
       // This function is called when a notebook is started.
       function load_ipython_extension() {
-
-        console.log("Hello");
 
         // Canvas generation functions
         function create_canvas(width, height) {
@@ -378,6 +390,7 @@ class NotateCanvas {
                 else if (!this.pointer_moved && !this.disable_expand) { // Clicked the canvas.
                     // this.canvas.style.border = "thick solid #000000"
 
+                    // A black, translucent background for the popover:
                     let site = document.getElementsByTagName("BODY")[0];
                     let site_bounds = site.getBoundingClientRect();
                     let bg = document.createElement('div');
@@ -392,6 +405,7 @@ class NotateCanvas {
                     bg.style.opacity = 0.8;
                     site.appendChild(bg);
 
+                    // The cloned DOM canvas:
                     let bounds = this.canvas.getBoundingClientRect();
                     let clone = this.canvas.cloneNode(false);
                     const margin = 100;
@@ -418,6 +432,39 @@ class NotateCanvas {
                     notate_clone.clear();
                     notate_clone.draw();
 
+                    // A Trash icon
+                    // let trash_container = document.createElement('div');
+                    let trash_icon = document.createElement('i');
+                    trash_icon.style.position = "absolute";
+                    trash_icon.style.display = "block";
+                    trash_icon.style.left = (site_bounds.width - margin - 40) + "px";
+                    trash_icon.style.top  = (site_bounds.height/2 - bounds.height/2*scaleX + 20) + "px";
+                    trash_icon.classList.add("fa")
+                    trash_icon.classList.add("fa-trash");
+                    trash_icon.classList.add("fa-2x");
+                    // trash_container.style.left = (site_bounds.width/2 - bounds.width/2) + "px";
+                    // trash_container.style.top  = (site_bounds.height/2 - bounds.height/2) + "px";
+                    // trash_container.appendChild(trash_icon);
+                    trash_icon.style.zIndex = "7";
+                    trash_icon.style.opacity = 0.4;
+                    trash_icon.addEventListener('pointerdown', function(e) {
+                        this.style.cursor = 'default';
+                        this.style.opacity = 0.6;
+                        notate_clone.strokes = [];
+                        notate_clone.clear();
+                    }.bind(trash_icon));
+                    trash_icon.addEventListener('pointermove', function(e) {
+                        if (e.pointerType !== "touch")
+                            this.style.cursor = 'pointer';
+                        this.style.opacity = 1.0;
+                    }.bind(trash_icon));
+                    trash_icon.addEventListener('pointerleave', function(e) {
+                        if (e.pointerType !== "touch")
+                            this.style.cursor = 'default';
+                        this.style.opacity = 0.4;
+                    }.bind(trash_icon));
+                    site.appendChild(trash_icon);
+
                     // Exit modal popover when clicking/touching off the canvas:
                     bg.addEventListener('pointerdown', function(e) {
                         if (e.pointerType === "pen") return;
@@ -428,6 +475,7 @@ class NotateCanvas {
                         // Remove modal elements:
                         site.removeChild(bg);
                         site.removeChild(clone);
+                        site.removeChild(trash_icon);
                         NotateCanvasManager.remove(notate_clone);
 
                         // Update parent canvas:
