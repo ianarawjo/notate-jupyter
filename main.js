@@ -285,17 +285,21 @@ class NotateCanvas {
         // this.pos = { x:this.canvas.offsetLeft, y:this.canvas.offsetTop };
         this.pos = { x:0, y:0 };
         this.bg_color = '#fff';
-        this.bg_opacity = 0.4;
+        this.bg_opacity = 0.5;
         this.default_linewidth = default_linewidth;
 
+        this.disable_resize = false;
+        this.disable_expand = false;
         this.resizing = false;
         this.pointer_down = false;
+        this.pointer_moved = false;
 
         this.new_strokes = {};
 
         // Attach pointer event listeners
         let pointerDown = function pointerDown(e) {
             this.pointer_down = true;
+            this.pointer_moved = false;
 
             if (this.resizing === true && e.pointerType === "mouse") {
                 e.preventDefault();
@@ -317,6 +321,7 @@ class NotateCanvas {
         }.bind(this);
         let pointerMove = function pointerMove(e) {
             let pos = this.getPointerValue(e);
+            this.pointer_moved = true;
 
             // Ensure pointer event is being tracked, if not, err:
             if (e.pointerId in this.new_strokes) {
@@ -339,7 +344,7 @@ class NotateCanvas {
                 this.draw();
                 e.preventDefault();
 
-            } else {
+            } else if (!this.disable_resize) {
                 if (pos.x >= this.canvas.width - 30 && pos.y >= this.canvas.height - 30) {
                     this.canvas.style.cursor = "se-resize";
                     this.resizing = true;
@@ -368,13 +373,75 @@ class NotateCanvas {
         }.bind(this);
         let pointerUp = function pointerUp(e) {
             if (this.pointer_down) {
-                if (this.resizing)
+                if (this.resizing) // End of resizing canvas operation.
                     this.draw();
-                this.pointer_down = false;
-                this.resizing = false;
+                else if (!this.pointer_moved && !this.disable_expand) { // Clicked the canvas.
+                    // this.canvas.style.border = "thick solid #000000"
+
+                    let site = document.getElementsByTagName("BODY")[0];
+                    let site_bounds = site.getBoundingClientRect();
+                    let bg = document.createElement('div');
+                    bg.style.backgroundColor = '#000';
+                    bg.style.width = "100%";
+                    bg.style.height = "100%";
+                    bg.style.position = "absolute";
+                    bg.style.left = "0px";
+                    bg.style.top = "0px";
+                    bg.style.zIndex = "5";
+                    bg.style.display = "block";
+                    bg.style.opacity = 0.8;
+                    site.appendChild(bg);
+
+                    let bounds = this.canvas.getBoundingClientRect();
+                    let clone = this.canvas.cloneNode(false);
+                    const margin = 100;
+                    const scaleX = (site_bounds.width - margin*2) / bounds.width;
+                    clone.style.position = "absolute";
+                    clone.style.display = "block";
+                    clone.style.left = (site_bounds.width/2 - bounds.width/2) + "px";
+                    clone.style.top  = (site_bounds.height/2 - bounds.height/2) + "px";
+                    clone.style.width = bounds.width + "px";
+                    clone.style.height = bounds.height + "px";
+                    clone.backgroundColor = "#fff";
+                    clone.style.zIndex = "6";
+                    clone.style.transform = "scale(" + scaleX + "," + scaleX + ")";
+                    clone.style.border = "none";
+                    site.appendChild(clone);
+                    // clone.style.transition = "transform 1000ms cubic-bezier(0.165, 0.84, 0.44, 1)";
+
+                    // Add pen-based draw capabilities to canvas w/ draw library code:
+                    let notate_clone = NotateCanvasManager.setup(clone);
+                    notate_clone.bg_opacity = 1.0;
+                    notate_clone.disable_resize = true;
+                    notate_clone.disable_expand = true;
+                    notate_clone.strokes = this.strokes;
+                    notate_clone.clear();
+                    notate_clone.draw();
+
+                    // Exit modal popover when clicking/touching off the canvas:
+                    bg.addEventListener('pointerdown', function(e) {
+                        if (e.pointerType === "pen") return;
+
+                        // Transfer strokes back to the parent canvas:
+                        this.strokes = notate_clone.strokes;
+
+                        // Remove modal elements:
+                        site.removeChild(bg);
+                        site.removeChild(clone);
+                        NotateCanvasManager.remove(notate_clone);
+
+                        // Update parent canvas:
+                        this.clear();
+                        this.draw();
+                    }.bind(this));
+                }
             } else {
                 console.log("Warning: Pointer was already up.");
             }
+
+            this.pointer_down = false;
+            this.resizing = false;
+            this.pointer_moved = false;
 
             // If pointer draw event is being tracked
             if (e.pointerId in this.new_strokes) {
