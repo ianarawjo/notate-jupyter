@@ -289,14 +289,15 @@ class NotateCanvas {
         this.default_linewidth = default_linewidth;
 
         this.resizing = false;
-        this.mouse_down = false;
+        this.pointer_down = false;
 
         this.new_strokes = {};
 
         // Attach pointer event listeners
         let pointerDown = function pointerDown(e) {
+            this.pointer_down = true;
+
             if (this.resizing === true && e.pointerType === "mouse") {
-                this.mouse_down = true;
                 e.preventDefault();
                 return;
             }
@@ -327,19 +328,18 @@ class NotateCanvas {
                 this.drawStroke( { pts:this.new_strokes[e.pointerId].pts.slice(-2),
                                  width:this.new_strokes[e.pointerId].weight,
                                  color:this.new_strokes[e.pointerId].color });
-            } else if (this.mouse_down && this.resizing) {
+            } else if (this.pointer_down && this.resizing) {
 
                 // Resize canvas from bottom-right corner:
                 this.canvas.style.width = Math.floor(e.offsetX + 30) + "px";
                 this.canvas.style.height = Math.floor(e.offsetY + 30) + "px";
                 this.canvas.width = Math.floor(e.offsetX + 30) * 2;
                 this.canvas.height = Math.floor(e.offsetY + 30) * 2;
-                console.log("moving");
+                this.clear();
                 this.draw();
                 e.preventDefault();
 
             } else {
-
                 if (pos.x >= this.canvas.width - 30 && pos.y >= this.canvas.height - 30) {
                     this.canvas.style.cursor = "se-resize";
                     this.resizing = true;
@@ -350,11 +350,33 @@ class NotateCanvas {
                 }
             }
         }.bind(this);
-        let pointerCancel = function pointerLeave(e) {
-            if (e.pointerType === "mouse")
-                this.mouse_down = false;
+        let pointerLeave = function pointerLeave(e) {
+            if (this.pointer_down) {
+                if (this.resizing) {
+                    // Continue to resize canvas from bottom-right corner:
+                    this.canvas.style.width = Math.floor(e.offsetX + 30) + "px";
+                    this.canvas.style.height = Math.floor(e.offsetY + 30) + "px";
+                    this.canvas.width = Math.floor(e.offsetX + 30) * 2;
+                    this.canvas.height = Math.floor(e.offsetY + 30) * 2;
+                    this.clear();
+                    this.draw();
+                    e.preventDefault();
 
-            // Ensure pointer event is being tracked, if not, err:
+                    console.log("pointer leave");
+                }
+            }
+        }.bind(this);
+        let pointerUp = function pointerUp(e) {
+            if (this.pointer_down) {
+                if (this.resizing)
+                    this.draw();
+                this.pointer_down = false;
+                this.resizing = false;
+            } else {
+                console.log("Warning: Pointer was already up.");
+            }
+
+            // If pointer draw event is being tracked
             if (e.pointerId in this.new_strokes) {
 
                 // Move stroke into the main strokes array:
@@ -368,18 +390,17 @@ class NotateCanvas {
             } else {
                 this.canvas.style.border = "thin solid #aaa";
                 this.canvas.style.cursor = "auto";
-                this.resizing = false;
             }
         }.bind(this);
         this.canvas.addEventListener('pointerdown', pointerDown);
         this.canvas.addEventListener('pointermove', pointerMove);
-        this.canvas.addEventListener('pointerup', pointerCancel);
-        this.canvas.addEventListener('pointerleave', pointerCancel);
+        this.canvas.addEventListener('pointerup', pointerUp);
+        this.canvas.addEventListener('pointerleave', pointerLeave);
         this.destruct = function() {
             this.canvas.removeEventListener('pointerdown', pointerDown);
             this.canvas.removeEventListener('pointermove', pointerMove);
-            this.canvas.removeEventListener('pointerup', pointerCancel);
-            this.canvas.removeEventListener('pointerleave', pointerCancel);
+            this.canvas.removeEventListener('pointerup', pointerUp);
+            this.canvas.removeEventListener('pointerleave', pointerLeave);
         }.bind(this);
     }
     attachSocket(socket) {
