@@ -2,14 +2,17 @@ define([
     'require',
     'jquery',
     'base/js/namespace',
-    'base/js/events'
-   ], function(requirejs, $, Jupyter, events) {
+    'base/js/events',
+    'notebook/js/codecell'
+], function(requirejs, $, Jupyter, events, codecell) {
 
       // For keeping track of canvases and copy-paste function:
       var canvases = {};
+      var CodeCell = codecell.CodeCell;
 
       // Web socket for sending canvas data on change
-      var socket = new NotateWebSocket();
+      var socket;
+      // var socket = new NotateWebSocket();
 
       // Adds a cell above current cell (will be top if no cells)
       var add_cell = function() {
@@ -43,6 +46,92 @@ define([
       // This function is called when a notebook is started.
       function load_ipython_extension() {
 
+        // events.on('execute.CodeCell', function(evt, data) {
+        //     var cell = data.cell;
+        //     var cm = cell.code_mirror;
+        //     cm.replaceRange('x = y', {'line':0, 'ch':0});
+        //     console.log('HELLO WORLD', cell, data);
+        // });
+
+        // See https://github.com/jupyter/notebook/blob/42227e99f98c3f6b2b292cbef85fa643c8396dc9/notebook/static/services/kernels/kernel.js#L728
+        function run_code_silently(code, cb) {
+            var kernel = Jupyter.notebook.kernel;
+            var callbacks = {
+                shell : {
+                    reply : function(msg) {
+                        console.log(msg);
+                        if (msg.content.status === 'error') {
+                            // handle error
+                            console.error('Error running silent code', code);
+                        } else {
+                            // status is OK
+                            cb();
+                        }
+                    } //execute_reply_callback,
+                }
+            };
+            var options = {
+                silent : true,
+                user_expressions : {},
+                allow_stdin : false
+            };
+            kernel.execute(code, callbacks, options);
+            console.log('tried to run code', code);
+        }
+
+        var shortcuts = {
+          'shift-enter': function(evt, data) {
+
+              // var cell = Jupyter.notebook.get_selected_cell();
+
+              // Convert canvases to PNGs and encode as base64 str
+              // to 'send' to corresponding Python variables:
+              let data_urls = {};
+              let code = 'import base64\nimport numpy as np\nfrom io import BytesIO\nfrom PIL import Image\n';
+              for (var idx in canvases) {
+                  data_urls[idx] = canvases[idx].canvas.toDataURL().split(',')[1];
+                  code += idx + '=np.array(Image.open(BytesIO(base64.b64decode("' + data_urls[idx] + '"))))\n';
+              }
+
+              // Insert artificial code into cell
+              // var cell = Jupyter.notebook.get_selected_cell();
+              // var cm = cell.code_mirror;
+              // cm.replaceRange('x = y', {'line':0, 'ch':0});
+              // console.log('HELLO WORLD', cell);
+
+              // First run some background code silently to setup the environment
+              // for this cell. The __*__ canvases will become numpy 2d arrays (images)
+              run_code_silently(code, function () {
+                  Jupyter.notebook.execute_cell_and_select_below();
+              });
+          }
+        }
+        Jupyter.notebook.keyboard_manager.edit_shortcuts.add_shortcuts(shortcuts);
+        Jupyter.notebook.keyboard_manager.command_shortcuts.add_shortcuts(shortcuts);
+
+        // function patch_CodeCell_get_callbacks () {
+        //     console.log('patching CodeCell.prototype.get_callbacks');
+        //     var old_get_callbacks = CodeCell.prototype.get_callbacks;
+        //     CodeCell.prototype.get_callbacks = function () {
+        //         var callbacks = old_get_callbacks.apply(this, arguments);
+        //
+        //         var cell = this;
+        //         console.log(callbacks.shell);
+        //         var prev_reply_callback = callbacks.shell.reply;
+        //         callbacks.shell.reply = function (msg) {
+        //             if (msg.msg_type === 'execute_reply') {
+        //                 console.log('HUH');
+        //             }
+        //             else {
+        //                 console.log('msg_type', msg.msg_type);
+        //             }
+        //             return prev_reply_callback(msg);
+        //         };
+        //         return callbacks;
+        //     };
+        // }
+        // patch_CodeCell_get_callbacks();
+
         // Canvas generation functions
         function create_canvas(width, height) {
             var canvas = document.createElement('canvas');
@@ -74,7 +163,8 @@ define([
             let notate_canvas = NotateCanvasManager.setup(canvas);
 
             // Send updates over NotateWebSocket:
-            notate_canvas.attachSocket(socket);
+            if (socket)
+                notate_canvas.attachSocket(socket);
 
             return notate_canvas;
         }
