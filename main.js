@@ -90,12 +90,32 @@ define([
               let code = 'import base64\nimport numpy as np\nfrom io import BytesIO\nfrom PIL import Image\n';
               for (var idx in canvases) {
                   data_urls[idx] = canvases[idx].canvas.toDataURL().split(',')[1];
-                  code += idx + '=np.array(Image.open(BytesIO(base64.b64decode("' + data_urls[idx] + '"))))\n';
+                  code += idx + '=1-np.array(Image.open(BytesIO(base64.b64decode("' + data_urls[idx] + '"))).convert("L"), dtype="uint8")/255\n';
               }
 
               // Insert artificial code into cell
-              // var cell = Jupyter.notebook.get_selected_cell();
-              // var cm = cell.code_mirror;
+              var cell = Jupyter.notebook.get_selected_cell();
+              var cm = cell.code_mirror;
+              cell.get_text = function() {
+                  let raw_code = this.code_mirror.getValue();
+                  let lines = raw_code.split("\n");
+                  let corrected_code = "";
+                  lines.forEach((line, i) => {
+                      if (line.includes('__c_')) {
+                          const idx = line.indexOf('__c_');
+                          for (let i = idx; i < line.length; i++) {
+                              if (line[i] == ')') {
+                                  line = line.slice(0, i) + ", locals()" + line.slice(i);
+                                  break;
+                              }
+                          }
+                      }
+                      corrected_code += line + '\n';
+                  });
+                  return corrected_code;
+              }.bind(cell);
+              //
+
               // cm.replaceRange('x = y', {'line':0, 'ch':0});
               // console.log('HELLO WORLD', cell);
 
@@ -382,7 +402,7 @@ class NotateCanvas {
         this.ctx.imageSmoothingEnabled = true;
 
         const default_linewidth = 2;
-        const default_color = '#555';
+        const default_color = '#000';
         this.resolution = 2;
         // this.pos = { x:this.canvas.offsetLeft, y:this.canvas.offsetTop };
         this.pos = { x:0, y:0 };
