@@ -80,7 +80,9 @@ define([
         }
 
         var shortcuts = {
+          'ctrl-enter': function(evt, data) {},
           'shift-enter': function(evt, data) {
+              // Running a cell that includes a canvas
 
               // var cell = Jupyter.notebook.get_selected_cell();
 
@@ -102,19 +104,15 @@ define([
                   let corrected_code = "";
                   lines.forEach((line, i) => {
                       if (line.includes('__c_')) {
-                          const idx = line.indexOf('__c_');
-                          for (let i = idx; i < line.length; i++) {
-                              if (line[i] == ')') {
-                                  line = line.slice(0, i) + ", locals()" + line.slice(i);
-                                  break;
-                              }
+                          let idx = line.lastIndexOf('__)');
+                          if (idx > -1) {
+                              line = line.slice(0, idx+2) + ", locals()" + line.slice(idx+2);
                           }
                       }
                       corrected_code += line + '\n';
                   });
                   return corrected_code;
               }.bind(cell);
-              //
 
               // cm.replaceRange('x = y', {'line':0, 'ch':0});
               // console.log('HELLO WORLD', cell);
@@ -123,34 +121,16 @@ define([
               // for this cell. The __*__ canvases will become numpy 2d arrays (images)
               run_code_silently(code, function () {
                   Jupyter.notebook.execute_cell_and_select_below();
+
+                  // Repair the old get_text so nothing funny happens:
+                  cell.get_text = function() {
+                      return this.code_mirror.getValue();
+                  }.bind(cell);
               });
           }
         }
         Jupyter.notebook.keyboard_manager.edit_shortcuts.add_shortcuts(shortcuts);
         Jupyter.notebook.keyboard_manager.command_shortcuts.add_shortcuts(shortcuts);
-
-        // function patch_CodeCell_get_callbacks () {
-        //     console.log('patching CodeCell.prototype.get_callbacks');
-        //     var old_get_callbacks = CodeCell.prototype.get_callbacks;
-        //     CodeCell.prototype.get_callbacks = function () {
-        //         var callbacks = old_get_callbacks.apply(this, arguments);
-        //
-        //         var cell = this;
-        //         console.log(callbacks.shell);
-        //         var prev_reply_callback = callbacks.shell.reply;
-        //         callbacks.shell.reply = function (msg) {
-        //             if (msg.msg_type === 'execute_reply') {
-        //                 console.log('HUH');
-        //             }
-        //             else {
-        //                 console.log('msg_type', msg.msg_type);
-        //             }
-        //             return prev_reply_callback(msg);
-        //         };
-        //         return callbacks;
-        //     };
-        // }
-        // patch_CodeCell_get_callbacks();
 
         // Canvas generation functions
         function create_canvas(width, height) {
@@ -164,15 +144,15 @@ define([
             canvas.style.verticalAlign = "middle";
             canvas.style.zIndex = 3; // 2 is the code blocks
             canvas.style.cursor = "default";
-            canvas.style.border = "thin solid #aaa";
+            canvas.style.border = "thin solid #ccc";
 	        canvas.style.touchAction = "none";
 
             // Clear bg
             let ctx = canvas.getContext("2d");
-            ctx.globalAlpha = 0.4;
+            // ctx.globalAlpha = 0.4;
             ctx.fillStyle = "#FFFFFF";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.globalAlpha = 1.0;
+            // ctx.globalAlpha = 1.0;
 
             return canvas;
         }
@@ -189,59 +169,6 @@ define([
             return notate_canvas;
         }
 
-        //     // Initialise application
-        //     Board.init(canvas);
-        //     Pen.init(Board.ctx);
-        //     Pointer.onEmpty = _.debounce(Board.storeMemory.bind(Board), 1500);
-        //
-        //     // Draw method
-        //     function drawOnCanvas(e, pointerObj, Pen) {
-        //       if (pointerObj) {
-        //         pointerObj.set(Board.getPointerPos(e));
-        //         Pen.setPen(Board.ctx, e);
-        //
-        //         if (pointerObj.pos0.x < 0) {
-        //           pointerObj.pos0.x = pointerObj.pos1.x - 1;
-        //           pointerObj.pos0.y = pointerObj.pos1.y - 1;
-        //         }
-        //         Board.ctx.beginPath();
-        //         Board.ctx.moveTo(pointerObj.pos0.x, pointerObj.pos0.y)
-        //         Board.ctx.lineTo(pointerObj.pos1.x, pointerObj.pos1.y);
-        //         Board.ctx.closePath();
-        //         Board.ctx.stroke();
-        //
-        //         pointerObj.pos0.x = pointerObj.pos1.x;
-        //         pointerObj.pos0.y = pointerObj.pos1.y;
-        //       }
-        //     }
-        //
-        //     // Attach event listener
-        //     var pointerDown = function pointerDown(e) {
-        //       // Initialise pointer
-        //       var pointer = new Pointer(e.pointerId);
-        //       pointer.set(Board.getPointerPos(e));
-        //
-        //       // Get function type
-        //       Pen.setFuncType(e);
-        //       if (Pen.funcType === Pen.funcTypes.menu) Board.clearMemory();
-        //       else drawOnCanvas(e, pointer, Pen);
-        //     }
-        //     var pointerMove = function pointerMove(e) {
-        //       if (Pen.funcType && (Pen.funcType.indexOf(Pen.funcTypes.draw) !== -1)) {
-        //
-        //         var pointer = Pointer.get(e.pointerId);
-        //         drawOnCanvas(e, pointer, Pen);
-        //       }
-        //     }
-        //     var pointerCancel = function pointerLeave(e) {
-        //       Pointer.destruct(e.pointerId);
-        //     }
-        //     Board.dom.addEventListener('pointerdown', pointerDown);
-        //     Board.dom.addEventListener('pointermove', pointerMove);
-        //     Board.dom.addEventListener('pointerup', pointerCancel);
-        //     Board.dom.addEventListener('pointerleave', pointerCancel);
-        // }
-
         // Get all code cells
         var code_cells = Jupyter.notebook.get_cells().filter(
             function(cell) {
@@ -250,36 +177,68 @@ define([
 
         // Attach the canvas-tear event handler
         code_cells.forEach(function (cell, i) {
-            cm = cell.code_mirror;
-            let insert_canvas = function(cm, canvas) {
-
+            let cm = cell.code_mirror;
+            let insert_canvas_at_pos = function(from, to, cm, canvas) {
+                cm.markText(from, to, {replacedWith:canvas});
+            }
+            let insert_canvas_at_cursor = function(cm, canvas) {
                 // Put canvas at cursor position
                 cursorPos = cm.getCursor();
                 dummy_idx = "__c_" + Object.keys(canvases).length + "__";
                 cm.replaceRange(dummy_idx, cursorPos); // Insert a dummy character at cursor position
-                cm.markText({"line":cursorPos.line, "ch":cursorPos.ch}, // replace it with canvas
-                            {"line":cursorPos.line, "ch":cursorPos.ch+dummy_idx.length},
-                            {replacedWith:canvas});
-
+                insert_canvas_at_pos({"line":cursorPos.line, "ch":cursorPos.ch}, // replace it with canvas
+                                     {"line":cursorPos.line, "ch":cursorPos.ch+dummy_idx.length},
+                                     cm, canvas)
                 return {canvas:canvas, idx:dummy_idx};
             };
 
+            // Setup or load cell metadata
+            if ('notate_canvi' in cell.metadata) {
+                for (let idx in cell.metadata['notate_canvi']) {
+                    // For each 'idx' (e.g. __c_0__), check if its found in the cell's text.
+                    // If found, create + insert canvas at that index, +load it with saved image data.
+                    let cursor = cm.getSearchCursor(idx);
+                    while(cursor.findNext()) {
+                        // We've found a match. Insert canvas at position + populate it:
+                        // Create new HTML canvas element + setup
+                        let canvas = create_canvas(600, 240);
+
+                        // Create NotateCanvas and attach event handlers
+                        let notate_canvas = attach_handlers(canvas);
+
+                        // Load canvas with saved image data
+                        notate_canvas.loadFromDataURL(cell.metadata['notate_canvi'][idx])
+
+                        // Insert canvas at cursor position in current cell
+                        insert_canvas_at_pos(cursor.from(), cursor.to(), cm, canvas);
+
+                        // Index canvas for future reference
+                        canvases[idx] = canvas;
+                        notate_canvas.idx = idx;
+                        notate_canvas.cell = cell;
+                    }
+                }
+            } else
+                cell.metadata['notate_canvi'] = {};
+
             // Insert new canvas on Ctrl+Enter key press:
             cm.addKeyMap({"Ctrl-Enter":function(cm) {
-                // Create new canvas element + setup
+                // Create new HTML canvas element + setup
                 let canvas = create_canvas(600, 240);
 
-                // Attach event handlers
+                // Create NotateCanvas and attach event handlers
                 let notate_canvas = attach_handlers(canvas);
 
-                // Insert canvas at cursor position
-                let c = insert_canvas(cm, canvas);
+                // Insert canvas at cursor position in current cell
+                let c = insert_canvas_at_cursor(cm, canvas);
 
                 // Index canvas for future reference
-                canvases[c.idx] = notate_canvas;
+                canvases[c.idx] = c.canvas;
+                notate_canvas.idx = c.idx;
+                notate_canvas.cell = cell;
             }});
 
-
+            // Paste a canvas somewhere else
             cm.on('paste', function(cm, event) {
                 txt = event.clipboardData.getData("text")
                 console.log("pasted!", txt);
@@ -296,49 +255,14 @@ define([
                     NotateCanvasManager.add(clonedNotateCanvas);
 
                     // Insert canvas at cursor position
-                    let insertEvent = insert_canvas(cm, canvas);
-                    let dummy_idx = insertEvent.idx;
+                    let c = insert_canvas_at_cursor(cm, canvas);
+                    canvases[c.idx] = c.canvas;
 
-                    // Index canvas for future reference
-                    canvases[dummy_idx] = clonedNotateCanvas;
+                    clonedNotateCanvas.idx = c.idx;
+                    clonedNotateCanvas.cell = cell;
                 };
             });
         });
-
-        // Add a canvas to the top-level notebook panel element
-        // var nb_panel_div = document.getElementById("notebook"); // Jupyter.notebook.element.parentElement;
-        // var canvas = document.createElement('canvas');
-        // console.log(Jupyter.notebook.element);
-        // canvas.id = 'notate-canvas';
-        // canvas.width  = nb_panel_div.clientWidth;
-        // canvas.height = nb_panel_div.clientHeight;
-        // canvas.style.position = "absolute";
-        // canvas.style.zIndex = 3; // 2 is the code blocks
-        // canvas.style.top = 0;
-        // canvas.style.left = 0;
-        // nb_panel_div.appendChild(canvas);
-
-        // var ctx = canvas.getContext('2d');
-        // $(canvas).on('pointerdown', function (e) {
-        //
-        //   // Getting coordinates
-        //   var left = e.offsetX;
-        //   var top = e.offsetY;
-        //   console.log(e);
-        //
-        //   ctx.beginPath();
-        //   ctx.moveTo(0, 0);
-        //   ctx.lineTo(left, top);
-        //   ctx.stroke();
-        //
-        //   // Detecting the underlying event type
-        //   // Can be "mouse", "touch", or "pen"
-        //   var underlyingEvent = e.originalEvent.pointerType;
-        //
-        //   e.preventDefault();
-        //
-        // });
-
         // Add a default cell if there are no cells
         // if (Jupyter.notebook.get_cells().length===1){
         //   add_cell();
@@ -388,13 +312,16 @@ class NotateCanvas {
         c.resolution = this.resolution;
         c.bg_color = this.bg_color;
         c.bg_opacity = this.bg_opacity;
-        c.default_linewidth = this.default_linewidth;
+        c.pen_weight = this.pen_weight;
+        c.pen_color = this.pen_color;
         c.clear();
         c.draw();
         return c;
     }
     constructor(canvas_element) {
         this.strokes = [];
+        this.idx = null; // undefined
+        this.cell = null;
         this.canvas = canvas_element;
         this.ctx = this.canvas.getContext('2d', {
             desynchronized: false
@@ -403,12 +330,16 @@ class NotateCanvas {
 
         const default_linewidth = 2;
         const default_color = '#000';
+        const default_border = "thin solid #ccc";
+        const hover_border = "thin solid #888";
+        this.pen_color = default_color;
+        this.pen_weight = default_linewidth;
         this.resolution = 2;
         // this.pos = { x:this.canvas.offsetLeft, y:this.canvas.offsetTop };
         this.pos = { x:0, y:0 };
         this.bg_color = '#fff';
-        this.bg_opacity = 0.5;
-        this.default_linewidth = default_linewidth;
+        this.bg_opacity = 1.0;
+        this.default_linewidth = default_linewidth
 
         this.disable_resize = false;
         this.disable_expand = false;
@@ -419,11 +350,19 @@ class NotateCanvas {
         this.new_strokes = {};
 
         // Attach pointer event listeners
+        let pointerEnter = function pointerEnter(e) {
+            let _this = this;
+            this.canvas.style.border = hover_border;
+            this.saved_img = null;
+            this.toImage().then(function (img) {
+                _this.saved_img = img;
+            });
+        }.bind(this);
         let pointerDown = function pointerDown(e) {
             this.pointer_down = true;
             this.pointer_moved = false;
 
-            if (this.resizing === true && e.pointerType === "mouse") {
+            if (this.resizing && e.pointerType === "mouse") {
                 e.preventDefault();
                 return;
             }
@@ -436,7 +375,7 @@ class NotateCanvas {
             }
 
             // Create new stroke and attach reference
-            let s = { pts: [this.getPointerValue(e)], weight:default_linewidth, color:default_color };
+            let s = { pts: [this.getPointerValue(e)], weight:this.pen_weight, color:this.pen_color };
             this.new_strokes[e.pointerId] = s;
 
             this.drawStroke(s);
@@ -458,21 +397,43 @@ class NotateCanvas {
             } else if (this.pointer_down && this.resizing) {
 
                 // Resize canvas from bottom-right corner:
-                this.canvas.style.width = Math.floor(e.offsetX + 30) + "px";
-                this.canvas.style.height = Math.floor(e.offsetY + 30) + "px";
-                this.canvas.width = Math.floor(e.offsetX + 30) * 2;
-                this.canvas.height = Math.floor(e.offsetY + 30) * 2;
-                this.clear();
-                this.draw();
-                e.preventDefault();
+                const d = 20;
+                if (this.resizing.includes('hor')) {
+                    this.canvas.style.width = Math.floor(e.offsetX + d) + "px";
+                    this.canvas.width = Math.floor(e.offsetX + d) * 2;
+                }
+                if (this.resizing.includes('vert')) {
+                    this.canvas.style.height = Math.floor(e.offsetY + d) + "px";
+                    this.canvas.height = Math.floor(e.offsetY + d) * 2;
+                }
+
+                this.loadFromImage(this.saved_img, false);
 
             } else if (!this.disable_resize) {
-                if (pos.x >= this.canvas.width - 30 && pos.y >= this.canvas.height - 30) {
-                    this.canvas.style.cursor = "se-resize";
-                    this.resizing = true;
+                // Bottom-right resize
+                const d = 30;
+                if (pos.x >= this.canvas.width - d && pos.y >= this.canvas.height - d) {
+                    this.canvas.style.cursor = "nwse-resize";
+                    this.canvas.style.borderRight = "3px solid gray";
+                    this.canvas.style.borderBottom = "3px solid gray";
+                    this.resizing = "hor-vert";
+                }
+                else if (pos.x >= this.canvas.width - d) {
+                    this.canvas.style.cursor = "col-resize";
+                    this.canvas.style.borderRight = "3px solid gray";
+                    this.canvas.style.borderBottom = hover_border;
+                    this.resizing = "hor";
+                }
+                else if (pos.y >= this.canvas.height - d) {
+                    this.canvas.style.cursor = "row-resize";
+                    this.canvas.style.borderBottom = "3px solid gray";
+                    this.canvas.style.borderRight = hover_border;
+                    this.resizing = "vert";
                 }
                 else {
                     this.canvas.style.cursor = "auto";
+                    // this.canvas.style.border = "thin solid #aaa";
+                    this.canvas.style.border = hover_border;
                     this.resizing = false;
                 }
             }
@@ -481,23 +442,29 @@ class NotateCanvas {
             if (this.pointer_down) {
                 if (this.resizing) {
                     // Continue to resize canvas from bottom-right corner:
-                    this.canvas.style.width = Math.floor(e.offsetX + 30) + "px";
-                    this.canvas.style.height = Math.floor(e.offsetY + 30) + "px";
-                    this.canvas.width = Math.floor(e.offsetX + 30) * 2;
-                    this.canvas.height = Math.floor(e.offsetY + 30) * 2;
-                    this.clear();
-                    this.draw();
+                    const d = 20;
+                    if (this.resizing.includes('hor')) {
+                        this.canvas.style.width = Math.floor(e.offsetX + d) + "px";
+                        this.canvas.width = Math.floor(e.offsetX + d) * 2;
+                    }
+                    if (this.resizing.includes('vert')) {
+                        this.canvas.style.height = Math.floor(e.offsetY + d) + "px";
+                        this.canvas.height = Math.floor(e.offsetY + d) * 2;
+                    }
+                    this.loadFromImage(this.saved_img, false);
                     e.preventDefault();
 
                     console.log("pointer leave");
                 }
             }
+            this.canvas.style.border = default_border;
         }.bind(this);
         let pointerUp = function pointerUp(e) {
             if (this.pointer_down) {
-                if (this.resizing) // End of resizing canvas operation.
-                    this.draw();
-                else if (!this.pointer_moved && !this.disable_expand) { // Clicked the canvas.
+                if (this.resizing !== false) { // End of resizing canvas operation.
+                    this.loadFromImage(this.saved_img, false);
+                    this.saveMetadataToCell(); // Save resized image to cell metadata
+                } else if (!this.pointer_moved && !this.disable_expand) { // Clicked the canvas.
                     // this.canvas.style.border = "thick solid #000000"
 
                     // A black, translucent background for the popover:
@@ -519,7 +486,7 @@ class NotateCanvas {
                     let bounds = this.canvas.getBoundingClientRect();
                     let clone = this.canvas.cloneNode(false);
                     const margin = 100;
-                    const scaleX = (site_bounds.width - margin*2) / bounds.width;
+                    const scaleX = Math.min((site_bounds.width - margin*2) / bounds.width, (site_bounds.height - 110 - margin*2) / bounds.height);
                     clone.style.position = "absolute";
                     clone.style.display = "block";
                     clone.style.left = (site_bounds.width/2 - bounds.width/2) + "px";
@@ -539,41 +506,87 @@ class NotateCanvas {
                     notate_clone.disable_resize = true;
                     notate_clone.disable_expand = true;
                     notate_clone.strokes = this.strokes;
+                    notate_clone.idx = this.idx;
+                    notate_clone.cell = this.cell;
                     notate_clone.clear();
-                    notate_clone.draw();
+                    // notate_clone.draw();
+                    notate_clone.loadFromDataURL(this.toDataURL());
 
                     // A Trash icon
                     // let trash_container = document.createElement('div');
-                    let trash_icon = document.createElement('i');
-                    trash_icon.style.position = "absolute";
-                    trash_icon.style.display = "block";
-                    trash_icon.style.left = (site_bounds.width - margin - 40) + "px";
-                    trash_icon.style.top  = (site_bounds.height/2 - bounds.height/2*scaleX + 20) + "px";
-                    trash_icon.classList.add("fa")
-                    trash_icon.classList.add("fa-trash");
-                    trash_icon.classList.add("fa-2x");
-                    // trash_container.style.left = (site_bounds.width/2 - bounds.width/2) + "px";
-                    // trash_container.style.top  = (site_bounds.height/2 - bounds.height/2) + "px";
-                    // trash_container.appendChild(trash_icon);
-                    trash_icon.style.zIndex = "7";
-                    trash_icon.style.opacity = 0.4;
-                    trash_icon.addEventListener('pointerdown', function(e) {
-                        this.style.cursor = 'default';
-                        this.style.opacity = 0.6;
+                    function createIcon(fontAwesomeIconName) {
+                        let i = document.createElement('i');
+                        i.style.position = "absolute";
+                        i.style.display = "block";
+                        i.classList.add("fa")
+                        i.classList.add("fa-"+fontAwesomeIconName);
+                        i.classList.add("fa-2x");
+                        // trash_container.style.left = (site_bounds.width/2 - bounds.width/2) + "px";
+                        // trash_container.style.top  = (site_bounds.height/2 - bounds.height/2) + "px";
+                        // trash_container.appendChild(trash_icon);
+                        i.style.zIndex = "7";
+                        i.style.opacity = 0.4;
+                        i.is_toggled = false; // Special flag
+                        return i;
+                    }
+                    function attachEvents(i, onClickCb) {
+                        i.addEventListener('pointerdown', function(e) {
+                            this.style.cursor = 'default';
+                            this.style.opacity = 0.7;
+                            onClickCb();
+                        }.bind(i));
+                        i.addEventListener('pointermove', function(e) {
+                            if (e.pointerType !== "touch")
+                                this.style.cursor = 'pointer';
+                            this.style.opacity = 1.0;
+                        }.bind(i));
+                        i.addEventListener('pointerleave', function(e) {
+                            if (e.pointerType !== "touch")
+                                this.style.cursor = 'default';
+                            if (!this.is_toggled)
+                                this.style.opacity = 0.4;
+                        }.bind(i));
+                        return i;
+                    }
+                    let trash_icon, erase_icon, pen_icon;
+                    let rightedge = (site_bounds.width/2 - bounds.width/2*scaleX) + bounds.width*scaleX;
+                    let topedge = site_bounds.height/2 - bounds.height/2*scaleX
+                    trash_icon = createIcon("trash");
+                    trash_icon.style.left = (rightedge - 40) + "px";
+                    trash_icon.style.top  = (topedge + 20) + "px";
+                    erase_icon = createIcon("eraser");
+                    erase_icon.style.left = (rightedge - 80) + "px";
+                    erase_icon.style.top  = (topedge + 20) + "px";
+                    pen_icon = createIcon("pencil");
+                    pen_icon.style.left = (rightedge - 120) + "px";
+                    pen_icon.style.top  = (topedge + 20) + "px";
+                    pen_icon.style.opacity = 0.8;
+                    pen_icon.is_toggled = true;
+
+                    attachEvents(trash_icon, function() {
                         notate_clone.strokes = [];
                         notate_clone.clear();
-                    }.bind(trash_icon));
-                    trash_icon.addEventListener('pointermove', function(e) {
-                        if (e.pointerType !== "touch")
-                            this.style.cursor = 'pointer';
-                        this.style.opacity = 1.0;
-                    }.bind(trash_icon));
-                    trash_icon.addEventListener('pointerleave', function(e) {
-                        if (e.pointerType !== "touch")
-                            this.style.cursor = 'default';
-                        this.style.opacity = 0.4;
-                    }.bind(trash_icon));
+                    });
+                    attachEvents(erase_icon, function() {
+                        notate_clone.setPenColor('#fff'); // for now, eraser is just a bigger white pen
+                        notate_clone.setPenWeight(5);
+                        erase_icon.style.opacity = 0.8;
+                        erase_icon.is_toggled = true;
+                        pen_icon.style.opacity = 0.4;
+                        pen_icon.is_toggled = false;
+                    });
+                    attachEvents(pen_icon, function() {
+                        notate_clone.setPenColor('#000'); // for now, eraser is just a bigger white pen
+                        notate_clone.setPenWeight(2);
+                        pen_icon.style.opacity = 0.8;
+                        pen_icon.is_toggled = true;
+                        erase_icon.style.opacity = 0.4;
+                        erase_icon.is_toggled = false;
+                    });
+
                     site.appendChild(trash_icon);
+                    site.appendChild(erase_icon);
+                    site.appendChild(pen_icon);
 
                     // Exit modal popover when clicking/touching off the canvas:
                     bg.addEventListener('pointerdown', function(e) {
@@ -581,16 +594,32 @@ class NotateCanvas {
 
                         // Transfer strokes back to the parent canvas:
                         this.strokes = notate_clone.strokes;
+                        const cloneDataURL = notate_clone.toDataURL();
 
                         // Remove modal elements:
                         site.removeChild(bg);
                         site.removeChild(clone);
                         site.removeChild(trash_icon);
+                        site.removeChild(erase_icon);
+                        site.removeChild(pen_icon);
                         NotateCanvasManager.remove(notate_clone);
 
                         // Update parent canvas:
                         this.clear();
-                        this.draw();
+                        this.loadFromDataURL(cloneDataURL);
+                        // this.draw();
+                    }.bind(this));
+                    bg.addEventListener('pointerenter', function(e) {
+                        if (e.pointerType === "pen") return;
+
+                        notate_clone.canvas.style.opacity = 0.5;
+
+                    }.bind(this));
+                    bg.addEventListener('pointerleave', function(e) {
+                        if (e.pointerType === "pen") return;
+
+                        notate_clone.canvas.style.opacity = 1.0;
+
                     }.bind(this));
                 }
             } else {
@@ -608,20 +637,25 @@ class NotateCanvas {
                 this.strokes.push( this.new_strokes[e.pointerId] );
                 delete this.new_strokes[e.pointerId];
 
+                // Save img contents of canvas to Jupyter cell metadata
+                this.saveMetadataToCell();
+
                 // Update backend if defined:
                 if (this.socket) {
                     this.socket.sendDrawing(this.strokes, this.canvas.id);
                 }
             } else {
-                this.canvas.style.border = "thin solid #aaa";
+                this.canvas.style.border = default_border;
                 this.canvas.style.cursor = "auto";
             }
         }.bind(this);
+        this.canvas.addEventListener('pointerenter', pointerEnter);
         this.canvas.addEventListener('pointerdown', pointerDown);
         this.canvas.addEventListener('pointermove', pointerMove);
         this.canvas.addEventListener('pointerup', pointerUp);
         this.canvas.addEventListener('pointerleave', pointerLeave);
         this.destruct = function() {
+            this.canvas.removeEventListener('pointerenter', pointerEnter);
             this.canvas.removeEventListener('pointerdown', pointerDown);
             this.canvas.removeEventListener('pointermove', pointerMove);
             this.canvas.removeEventListener('pointerup', pointerUp);
@@ -632,6 +666,54 @@ class NotateCanvas {
         socket.canvas[this.canvas.id] = this;
         this.socket = socket;
     }
+    loadFromImage(img, changeSize=true) {
+        if (!img) return;
+        let canvas = this.canvas;
+        if (changeSize) {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            canvas.style.width = img.width/2+"px";
+            canvas.style.height = img.height/2+"px";
+        }
+        this.clear();
+        canvas.getContext("2d").drawImage(img, 0, 0);
+    }
+    loadFromDataURL(dataURL, changeSize=true) {
+        let img = new Image();
+        let canvas = this.canvas;
+        img.addEventListener("load", function () {
+            if (changeSize) {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                canvas.style.width = img.width/2+"px";
+                canvas.style.height = img.height/2+"px";
+            }
+            canvas.getContext("2d").drawImage(img, 0, 0);
+        });
+        img.setAttribute("src", dataURL);
+    }
+    toImage() {
+        const src = this.toDataURL();
+        return new Promise((resolve, reject) => {
+            let img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = src;
+        });
+    }
+    toDataURL() {
+        return this.canvas.toDataURL();
+    }
+    saveMetadataToCell() {
+        if (!this.cell || this.idx == null) {
+            console.warn('@ saveMetadataToCell: Could not save metadata with cell and idx', this.cell, this.idx);
+            return;
+        }
+        if (!('notate_canvi' in this.cell.metadata))
+            this.cell.metadata['notate_canvi'] = {};
+        this.cell.metadata['notate_canvi'][this.idx] = this.canvas.toDataURL();
+        console.log('Saved to cell', this.cell, 'for canvas with idx', this.idx);
+    }
     getPointerValue(e) {
         return {
           x: (e.offsetX - this.pos.x) * this.resolution,
@@ -641,7 +723,7 @@ class NotateCanvas {
     }
     getLineWidthForPointerEvent(e) {
         if (e.pointerType === 'pen') {
-            return e.pressure * (this.default_linewidth*2.0);
+            return e.pressure * (this.pen_weight*2.0);
         } else if (e.pointerType === 'touch') {
             if (e.width < 10 && e.height < 10) {
               return (e.width + e.height) * 2 + 10;
@@ -651,11 +733,17 @@ class NotateCanvas {
         }
 
         // Mouse or other type...
-        if (e.pressure) return e.pressure * (this.default_linewidth*2.0);
-        else            return this.default_linewidth;
+        if (e.pressure) return e.pressure * (this.pen_weight*2.0);
+        else            return this.pen_weight;
     }
     setStrokes(strokes) {
         this.strokes = strokes;
+    }
+    setPenColor(color) {
+        this.pen_color = color;
+    }
+    setPenWeight(weight) {
+        this.pen_weight = weight;
     }
     clear() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -1048,3 +1136,296 @@ class NotateWebSocket {
 //
 //   return Pointer;
 // })();
+
+// CodeMirror search extension
+// CodeMirror, copyright (c) by Marijn Haverbeke and others
+// Distributed under an MIT license: https://codemirror.net/LICENSE
+
+(function(mod) {
+  mod(CodeMirror)
+})(function(CodeMirror) {
+  "use strict"
+  var Pos = CodeMirror.Pos
+
+  function regexpFlags(regexp) {
+    var flags = regexp.flags
+    return flags != null ? flags : (regexp.ignoreCase ? "i" : "")
+      + (regexp.global ? "g" : "")
+      + (regexp.multiline ? "m" : "")
+  }
+
+  function ensureFlags(regexp, flags) {
+    var current = regexpFlags(regexp), target = current
+    for (var i = 0; i < flags.length; i++) if (target.indexOf(flags.charAt(i)) == -1)
+      target += flags.charAt(i)
+    return current == target ? regexp : new RegExp(regexp.source, target)
+  }
+
+  function maybeMultiline(regexp) {
+    return /\\s|\\n|\n|\\W|\\D|\[\^/.test(regexp.source)
+  }
+
+  function searchRegexpForward(doc, regexp, start) {
+    regexp = ensureFlags(regexp, "g")
+    for (var line = start.line, ch = start.ch, last = doc.lastLine(); line <= last; line++, ch = 0) {
+      regexp.lastIndex = ch
+      var string = doc.getLine(line), match = regexp.exec(string)
+      if (match)
+        return {from: Pos(line, match.index),
+                to: Pos(line, match.index + match[0].length),
+                match: match}
+    }
+  }
+
+  function searchRegexpForwardMultiline(doc, regexp, start) {
+    if (!maybeMultiline(regexp)) return searchRegexpForward(doc, regexp, start)
+
+    regexp = ensureFlags(regexp, "gm")
+    var string, chunk = 1
+    for (var line = start.line, last = doc.lastLine(); line <= last;) {
+      // This grows the search buffer in exponentially-sized chunks
+      // between matches, so that nearby matches are fast and don't
+      // require concatenating the whole document (in case we're
+      // searching for something that has tons of matches), but at the
+      // same time, the amount of retries is limited.
+      for (var i = 0; i < chunk; i++) {
+        if (line > last) break
+        var curLine = doc.getLine(line++)
+        string = string == null ? curLine : string + "\n" + curLine
+      }
+      chunk = chunk * 2
+      regexp.lastIndex = start.ch
+      var match = regexp.exec(string)
+      if (match) {
+        var before = string.slice(0, match.index).split("\n"), inside = match[0].split("\n")
+        var startLine = start.line + before.length - 1, startCh = before[before.length - 1].length
+        return {from: Pos(startLine, startCh),
+                to: Pos(startLine + inside.length - 1,
+                        inside.length == 1 ? startCh + inside[0].length : inside[inside.length - 1].length),
+                match: match}
+      }
+    }
+  }
+
+  function lastMatchIn(string, regexp, endMargin) {
+    var match, from = 0
+    while (from <= string.length) {
+      regexp.lastIndex = from
+      var newMatch = regexp.exec(string)
+      if (!newMatch) break
+      var end = newMatch.index + newMatch[0].length
+      if (end > string.length - endMargin) break
+      if (!match || end > match.index + match[0].length)
+        match = newMatch
+      from = newMatch.index + 1
+    }
+    return match
+  }
+
+  function searchRegexpBackward(doc, regexp, start) {
+    regexp = ensureFlags(regexp, "g")
+    for (var line = start.line, ch = start.ch, first = doc.firstLine(); line >= first; line--, ch = -1) {
+      var string = doc.getLine(line)
+      var match = lastMatchIn(string, regexp, ch < 0 ? 0 : string.length - ch)
+      if (match)
+        return {from: Pos(line, match.index),
+                to: Pos(line, match.index + match[0].length),
+                match: match}
+    }
+  }
+
+  function searchRegexpBackwardMultiline(doc, regexp, start) {
+    if (!maybeMultiline(regexp)) return searchRegexpBackward(doc, regexp, start)
+    regexp = ensureFlags(regexp, "gm")
+    var string, chunkSize = 1, endMargin = doc.getLine(start.line).length - start.ch
+    for (var line = start.line, first = doc.firstLine(); line >= first;) {
+      for (var i = 0; i < chunkSize && line >= first; i++) {
+        var curLine = doc.getLine(line--)
+        string = string == null ? curLine : curLine + "\n" + string
+      }
+      chunkSize *= 2
+
+      var match = lastMatchIn(string, regexp, endMargin)
+      if (match) {
+        var before = string.slice(0, match.index).split("\n"), inside = match[0].split("\n")
+        var startLine = line + before.length, startCh = before[before.length - 1].length
+        return {from: Pos(startLine, startCh),
+                to: Pos(startLine + inside.length - 1,
+                        inside.length == 1 ? startCh + inside[0].length : inside[inside.length - 1].length),
+                match: match}
+      }
+    }
+  }
+
+  var doFold, noFold
+  if (String.prototype.normalize) {
+    doFold = function(str) { return str.normalize("NFD").toLowerCase() }
+    noFold = function(str) { return str.normalize("NFD") }
+  } else {
+    doFold = function(str) { return str.toLowerCase() }
+    noFold = function(str) { return str }
+  }
+
+  // Maps a position in a case-folded line back to a position in the original line
+  // (compensating for codepoints increasing in number during folding)
+  function adjustPos(orig, folded, pos, foldFunc) {
+    if (orig.length == folded.length) return pos
+    for (var min = 0, max = pos + Math.max(0, orig.length - folded.length);;) {
+      if (min == max) return min
+      var mid = (min + max) >> 1
+      var len = foldFunc(orig.slice(0, mid)).length
+      if (len == pos) return mid
+      else if (len > pos) max = mid
+      else min = mid + 1
+    }
+  }
+
+  function searchStringForward(doc, query, start, caseFold) {
+    // Empty string would match anything and never progress, so we
+    // define it to match nothing instead.
+    if (!query.length) return null
+    var fold = caseFold ? doFold : noFold
+    var lines = fold(query).split(/\r|\n\r?/)
+
+    search: for (var line = start.line, ch = start.ch, last = doc.lastLine() + 1 - lines.length; line <= last; line++, ch = 0) {
+      var orig = doc.getLine(line).slice(ch), string = fold(orig)
+      if (lines.length == 1) {
+        var found = string.indexOf(lines[0])
+        if (found == -1) continue search
+        var start = adjustPos(orig, string, found, fold) + ch
+        return {from: Pos(line, adjustPos(orig, string, found, fold) + ch),
+                to: Pos(line, adjustPos(orig, string, found + lines[0].length, fold) + ch)}
+      } else {
+        var cutFrom = string.length - lines[0].length
+        if (string.slice(cutFrom) != lines[0]) continue search
+        for (var i = 1; i < lines.length - 1; i++)
+          if (fold(doc.getLine(line + i)) != lines[i]) continue search
+        var end = doc.getLine(line + lines.length - 1), endString = fold(end), lastLine = lines[lines.length - 1]
+        if (endString.slice(0, lastLine.length) != lastLine) continue search
+        return {from: Pos(line, adjustPos(orig, string, cutFrom, fold) + ch),
+                to: Pos(line + lines.length - 1, adjustPos(end, endString, lastLine.length, fold))}
+      }
+    }
+  }
+
+  function searchStringBackward(doc, query, start, caseFold) {
+    if (!query.length) return null
+    var fold = caseFold ? doFold : noFold
+    var lines = fold(query).split(/\r|\n\r?/)
+
+    search: for (var line = start.line, ch = start.ch, first = doc.firstLine() - 1 + lines.length; line >= first; line--, ch = -1) {
+      var orig = doc.getLine(line)
+      if (ch > -1) orig = orig.slice(0, ch)
+      var string = fold(orig)
+      if (lines.length == 1) {
+        var found = string.lastIndexOf(lines[0])
+        if (found == -1) continue search
+        return {from: Pos(line, adjustPos(orig, string, found, fold)),
+                to: Pos(line, adjustPos(orig, string, found + lines[0].length, fold))}
+      } else {
+        var lastLine = lines[lines.length - 1]
+        if (string.slice(0, lastLine.length) != lastLine) continue search
+        for (var i = 1, start = line - lines.length + 1; i < lines.length - 1; i++)
+          if (fold(doc.getLine(start + i)) != lines[i]) continue search
+        var top = doc.getLine(line + 1 - lines.length), topString = fold(top)
+        if (topString.slice(topString.length - lines[0].length) != lines[0]) continue search
+        return {from: Pos(line + 1 - lines.length, adjustPos(top, topString, top.length - lines[0].length, fold)),
+                to: Pos(line, adjustPos(orig, string, lastLine.length, fold))}
+      }
+    }
+  }
+
+  function SearchCursor(doc, query, pos, options) {
+    this.atOccurrence = false
+    this.doc = doc
+    pos = pos ? doc.clipPos(pos) : Pos(0, 0)
+    this.pos = {from: pos, to: pos}
+
+    var caseFold
+    if (typeof options == "object") {
+      caseFold = options.caseFold
+    } else { // Backwards compat for when caseFold was the 4th argument
+      caseFold = options
+      options = null
+    }
+
+    if (typeof query == "string") {
+      if (caseFold == null) caseFold = false
+      this.matches = function(reverse, pos) {
+        return (reverse ? searchStringBackward : searchStringForward)(doc, query, pos, caseFold)
+      }
+    } else {
+      query = ensureFlags(query, "gm")
+      if (!options || options.multiline !== false)
+        this.matches = function(reverse, pos) {
+          return (reverse ? searchRegexpBackwardMultiline : searchRegexpForwardMultiline)(doc, query, pos)
+        }
+      else
+        this.matches = function(reverse, pos) {
+          return (reverse ? searchRegexpBackward : searchRegexpForward)(doc, query, pos)
+        }
+    }
+  }
+
+  SearchCursor.prototype = {
+    findNext: function() {return this.find(false)},
+    findPrevious: function() {return this.find(true)},
+
+    find: function(reverse) {
+      var result = this.matches(reverse, this.doc.clipPos(reverse ? this.pos.from : this.pos.to))
+
+      // Implements weird auto-growing behavior on null-matches for
+      // backwards-compatibility with the vim code (unfortunately)
+      while (result && CodeMirror.cmpPos(result.from, result.to) == 0) {
+        if (reverse) {
+          if (result.from.ch) result.from = Pos(result.from.line, result.from.ch - 1)
+          else if (result.from.line == this.doc.firstLine()) result = null
+          else result = this.matches(reverse, this.doc.clipPos(Pos(result.from.line - 1)))
+        } else {
+          if (result.to.ch < this.doc.getLine(result.to.line).length) result.to = Pos(result.to.line, result.to.ch + 1)
+          else if (result.to.line == this.doc.lastLine()) result = null
+          else result = this.matches(reverse, Pos(result.to.line + 1, 0))
+        }
+      }
+
+      if (result) {
+        this.pos = result
+        this.atOccurrence = true
+        return this.pos.match || true
+      } else {
+        var end = Pos(reverse ? this.doc.firstLine() : this.doc.lastLine() + 1, 0)
+        this.pos = {from: end, to: end}
+        return this.atOccurrence = false
+      }
+    },
+
+    from: function() {if (this.atOccurrence) return this.pos.from},
+    to: function() {if (this.atOccurrence) return this.pos.to},
+
+    replace: function(newText, origin) {
+      if (!this.atOccurrence) return
+      var lines = CodeMirror.splitLines(newText)
+      this.doc.replaceRange(lines, this.pos.from, this.pos.to, origin)
+      this.pos.to = Pos(this.pos.from.line + lines.length - 1,
+                        lines[lines.length - 1].length + (lines.length == 1 ? this.pos.from.ch : 0))
+    }
+  }
+
+  CodeMirror.defineExtension("getSearchCursor", function(query, pos, caseFold) {
+    return new SearchCursor(this.doc, query, pos, caseFold)
+  })
+  CodeMirror.defineDocExtension("getSearchCursor", function(query, pos, caseFold) {
+    return new SearchCursor(this, query, pos, caseFold)
+  })
+
+  CodeMirror.defineExtension("selectMatches", function(query, caseFold) {
+    var ranges = []
+    var cur = this.getSearchCursor(query, this.getCursor("from"), caseFold)
+    while (cur.findNext()) {
+      if (CodeMirror.cmpPos(cur.to(), this.getCursor("to")) > 0) break
+      ranges.push({anchor: cur.from(), head: cur.to()})
+    }
+    if (ranges.length)
+      this.setSelections(ranges, 0)
+  })
+});
