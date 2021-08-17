@@ -76,7 +76,7 @@ define([
                 allow_stdin : false
             };
             kernel.execute(code, callbacks, options);
-            console.log('tried to run code', code);
+            // console.log('tried to run code', code);
         }
 
         var shortcuts = {
@@ -91,6 +91,7 @@ define([
               let data_urls = {};
               let code = 'import base64\nimport numpy as np\nfrom io import BytesIO\nfrom PIL import Image\n';
               for (var idx in canvases) {
+                  console.log(idx, canvases[idx]);
                   data_urls[idx] = canvases[idx].canvas.toDataURL().split(',')[1];
                   code += idx + '=1-np.array(Image.open(BytesIO(base64.b64decode("' + data_urls[idx] + '"))).convert("L"), dtype="uint8")/255\n';
               }
@@ -213,7 +214,7 @@ define([
                         insert_canvas_at_pos(cursor.from(), cursor.to(), cm, canvas);
 
                         // Index canvas for future reference
-                        canvases[idx] = canvas;
+                        canvases[idx] = notate_canvas;
                         notate_canvas.idx = idx;
                         notate_canvas.cell = cell;
                     }
@@ -233,7 +234,7 @@ define([
                 let c = insert_canvas_at_cursor(cm, canvas);
 
                 // Index canvas for future reference
-                canvases[c.idx] = c.canvas;
+                canvases[c.idx] = notate_canvas;
                 notate_canvas.idx = c.idx;
                 notate_canvas.cell = cell;
             }});
@@ -250,13 +251,13 @@ define([
                     let canvas = create_canvas(600, 240);
 
                     // Clone copied NotateCanvas, using new DOM canvas
-                    clonedNotateCanvas = canvases[txt].clone(canvas);
+                    let clonedNotateCanvas = canvases[txt].clone(canvas);
                     // Add cloned canvas to manager
                     NotateCanvasManager.add(clonedNotateCanvas);
 
                     // Insert canvas at cursor position
                     let c = insert_canvas_at_cursor(cm, canvas);
-                    canvases[c.idx] = c.canvas;
+                    canvases[c.idx] = clonedNotateCanvas;
 
                     clonedNotateCanvas.idx = c.idx;
                     clonedNotateCanvas.cell = cell;
