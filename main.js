@@ -52,6 +52,27 @@ define([
           return "__c_"+k+"__";
       };
 
+      // Given a notebook cell, checks what canvases are actually in the cell,
+      // and removes any which aren't from the cell's metadata (used on save_notebook()).
+      var cleanupCellMetadata = function(cell) {
+          if (!('notate_canvi' in cell.metadata)) return;
+          let cm = cell.code_mirror;
+          let ids = Object.keys(cell.metadata['notate_canvi']);
+          for(let idx of ids) {
+              // Check if a canvas with this index is in the text of the cell:
+              let cursor = cm.getSearchCursor(idx);
+              let found = false;
+              while(cursor.findNext()) {
+                  found = true;
+                  break;
+              }
+              if (!found) { // Delete unused canvases
+                  console.log('Deleting unused canvas', idx, 'in cell metadata.');
+                  delete cell.metadata['notate_canvi'][idx];
+              }
+          }
+      };
+
       var initialize = function () {
         // == Add any relative css to the page ==
         // Add Font Awesome 4.7 Icons:
@@ -73,6 +94,18 @@ define([
         //     cm.replaceRange('x = y', {'line':0, 'ch':0});
         //     console.log('HELLO WORLD', cell, data);
         // });
+
+        // Incredibly sketchy wrapper over Jupyter saving.
+        // Attempts to cleanup excess metadata in cells before saving.
+        var origSaveNotebook = Jupyter.notebook.__proto__.save_notebook.bind(Jupyter.notebook);
+        console.log('whaaa');
+        Jupyter.notebook.__proto__.save_notebook = function() {
+            let cells = Jupyter.notebook.get_cells();
+            for (let cell of cells)
+                cleanupCellMetadata(cell);
+            origSaveNotebook();
+        };
+        console.log(Jupyter.notebook.save_notebook);
 
         // See https://github.com/jupyter/notebook/blob/42227e99f98c3f6b2b292cbef85fa643c8396dc9/notebook/static/services/kernels/kernel.js#L728
         function run_code_silently(code, cb) {
@@ -310,10 +343,14 @@ define([
                                 canvases[new_id] = copied_notate_canvas;
                                 copied_notate_canvas.idx = new_id;
                                 copied_notate_canvas.cell = cell;
+
+                                // Save data to cell's metadata
+                                cell.metadata['notate_canvi'][new_id] = canvases[id].canvas.toDataURL();
                             }
                         }
                     }
 
+                    cleanupCellMetadata(cell);
                     just_pasted = false;
                 }
             });
@@ -321,26 +358,6 @@ define([
                 txt = event.clipboardData.getData("text");
                 console.log("pasted!", txt);
                 just_pasted = txt;
-                // if (txt in canvases) { // If the pasted text is a NotateCanvas id...
-                //     event.preventDefault();
-                //     console.log(txt.substring(4, txt.length-6+4));
-                //
-                //     // Create new canvas element + setup
-                //     let canvas = create_canvas(600, 240);
-                //
-                //     // Clone copied NotateCanvas, using new DOM canvas
-                //     let clonedNotateCanvas = canvases[txt].clone(canvas);
-                //     // Add cloned canvas to manager
-                //     NotateCanvasManager.add(clonedNotateCanvas);
-                //
-                //     // Insert canvas at cursor position
-                //     let c = insert_canvas_at_cursor(cm, canvas);
-                //     canvases[c.idx] = clonedNotateCanvas;
-                //
-                //     clonedNotateCanvas.idx = c.idx;
-                //     clonedNotateCanvas.cell = cell;
-                // };
-
             });
         });
         // Add a default cell if there are no cells
