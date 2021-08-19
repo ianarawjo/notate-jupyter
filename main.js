@@ -31,6 +31,27 @@ define([
           ])
       };
 
+      // Generates unique id for a new canvas
+      var uniqueCanvasId = function() {
+
+          // Get all existing ids as numbers, in ascending order
+          nums = [];
+          for (let id in canvases)
+              nums.push(parseInt(id.substring(4, id.length-2)));
+          nums.sort(function(a, b) {
+              return a - b;
+          });
+
+          // Find first unique index not already represented in the list
+          let k = 0;
+          for (const n of nums) {
+              if (k !== n) break;
+              k += 1;
+          }
+
+          return "__c_"+k+"__";
+      };
+
       var initialize = function () {
         // == Add any relative css to the page ==
         // Add Font Awesome 4.7 Icons:
@@ -92,7 +113,7 @@ define([
               let code = 'import base64\nimport numpy as np\nfrom io import BytesIO\nfrom PIL import Image\n';
               for (var idx in canvases) {
                   console.log(idx, canvases[idx]);
-                  data_urls[idx] = canvases[idx].canvas.toDataURL().split(',')[1];
+                  data_urls[idx] = canvases[idx].toOpaqueDataURL().split(',')[1];
                   code += idx + '=1-np.array(Image.open(BytesIO(base64.b64decode("' + data_urls[idx] + '"))).convert("L"), dtype="uint8")/255\n';
               }
 
@@ -148,12 +169,9 @@ define([
             canvas.style.border = "thin solid #ccc";
 	        canvas.style.touchAction = "none";
 
-            // Clear bg
-            let ctx = canvas.getContext("2d");
-            // ctx.globalAlpha = 0.4;
-            ctx.fillStyle = "#FFFFFF";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            // ctx.globalAlpha = 1.0;
+            // Set bg color to translucent white. This seems small but it lets
+            // the "selection" cursor (blue) show through when the canvas is highlighted as/with text.
+            canvas.style.backgroundColor = "rgba(255, 255, 255, 0.4)";
 
             return canvas;
         }
@@ -185,7 +203,7 @@ define([
             let insert_canvas_at_cursor = function(cm, canvas) {
                 // Put canvas at cursor position
                 cursorPos = cm.getCursor();
-                dummy_idx = "__c_" + Object.keys(canvases).length + "__";
+                dummy_idx = uniqueCanvasId();
                 cm.replaceRange(dummy_idx, cursorPos); // Insert a dummy character at cursor position
                 insert_canvas_at_pos({"line":cursorPos.line, "ch":cursorPos.ch}, // replace it with canvas
                                      {"line":cursorPos.line, "ch":cursorPos.ch+dummy_idx.length},
@@ -193,7 +211,7 @@ define([
                 return {canvas:canvas, idx:dummy_idx};
             };
 
-            // Setup or load cell metadata
+            // Load + inflate saved canvi from cell metadata
             if ('notate_canvi' in cell.metadata) {
                 for (let idx in cell.metadata['notate_canvi']) {
                     // For each 'idx' (e.g. __c_0__), check if its found in the cell's text.
@@ -240,28 +258,81 @@ define([
             }});
 
             // Paste a canvas somewhere else
+            let just_pasted = false;
+            cm.on('change', function(cm, event) { // 'After paste' event
+                if (just_pasted !== false) {
+                    console.log('after paste party');
+
+                    // Search the text for matches of NotateCanvas id's.
+                    // Replace all matches with corresponding canvas elements.
+                    let ids = Object.keys(canvases);
+                    for (let id of ids) {
+                        if (txt.includes(id)) {
+                            console.log('Searching for', id, '...');
+                            // For each 'idx' (e.g. __c_0__), check where it's found in the cell's text.
+                            // If there isn't a canvas already at that index, create + insert it, +load it with saved image data.
+                            let cursor = cm.getSearchCursor(id);
+                            while(cursor.findNext()) {
+                                // Skip any matches where there's already a canvas...
+                                let from = cursor.from();
+                                let to = cursor.to();
+                                if (cm.findMarks(from, to).length > 0)
+                                    continue;
+
+                                console.log('Found match for', id, 'at selection', from, to);
+
+                                // Replace this match with a unique ID.
+                                let new_id = uniqueCanvasId();
+                                cm.replaceRange(new_id, from, to);
+
+                                // Fix the selection width in case the new_idx is longer than the old one:
+                                to = {line: from.line, ch:from.ch + new_id.length};
+
+                                // Insert new canvas at position + populate it:
+                                // Create new HTML canvas element + setup
+                                let canvas = create_canvas(600, 240);
+                                let copied_notate_canvas = canvases[id].clone(canvas);
+                                // Add cloned canvas to manager
+                                NotateCanvasManager.add(copied_notate_canvas);
+
+                                // Insert canvas at cursor position in current cell
+                                insert_canvas_at_pos(from, to, cm, canvas);
+
+                                // Index canvas for future reference
+                                canvases[new_id] = copied_notate_canvas;
+                                copied_notate_canvas.idx = new_id;
+                                copied_notate_canvas.cell = cell;
+                            }
+                        }
+                    }
+
+                    just_pasted = false;
+                }
+            });
             cm.on('paste', function(cm, event) {
-                txt = event.clipboardData.getData("text")
+                txt = event.clipboardData.getData("text");
                 console.log("pasted!", txt);
-                if (txt in canvases) { // If the pasted text is a NotateCanvas id...
-                    event.preventDefault();
-                    console.log(txt.substring(4, txt.length-6+4));
+                just_pasted = txt;
+                // if (txt in canvases) { // If the pasted text is a NotateCanvas id...
+                //     event.preventDefault();
+                //     console.log(txt.substring(4, txt.length-6+4));
+                //
+                //     // Create new canvas element + setup
+                //     let canvas = create_canvas(600, 240);
+                //
+                //     // Clone copied NotateCanvas, using new DOM canvas
+                //     let clonedNotateCanvas = canvases[txt].clone(canvas);
+                //     // Add cloned canvas to manager
+                //     NotateCanvasManager.add(clonedNotateCanvas);
+                //
+                //     // Insert canvas at cursor position
+                //     let c = insert_canvas_at_cursor(cm, canvas);
+                //     canvases[c.idx] = clonedNotateCanvas;
+                //
+                //     clonedNotateCanvas.idx = c.idx;
+                //     clonedNotateCanvas.cell = cell;
+                // };
 
-                    // Create new canvas element + setup
-                    let canvas = create_canvas(600, 240);
-
-                    // Clone copied NotateCanvas, using new DOM canvas
-                    let clonedNotateCanvas = canvases[txt].clone(canvas);
-                    // Add cloned canvas to manager
-                    NotateCanvasManager.add(clonedNotateCanvas);
-
-                    // Insert canvas at cursor position
-                    let c = insert_canvas_at_cursor(cm, canvas);
-                    canvases[c.idx] = clonedNotateCanvas;
-
-                    clonedNotateCanvas.idx = c.idx;
-                    clonedNotateCanvas.cell = cell;
-                };
             });
         });
         // Add a default cell if there are no cells
@@ -304,19 +375,20 @@ var NotateCanvasManager = (function() {
 // all the basic drawing events for different platforms.
 class NotateCanvas {
     clone(new_canvas_element) { // Clone this NotateCanvas, e.g. to duplicate the HTML canvas.
-        var c = new NotateCanvas(new_canvas_element);
+        let c = new NotateCanvas(new_canvas_element);
         c.canvas.width = this.canvas.width;
         c.canvas.height = this.canvas.height;
         c.canvas.style.width = this.canvas.style.width;
         c.canvas.style.height = this.canvas.style.height;
-        c.strokes = JSON.parse(JSON.stringify(this.strokes)); // deep copy stroke data
+        c.canvas.style.backgroundColor = this.canvas.style.backgroundColor;
+        // c.strokes = JSON.parse(JSON.stringify(this.strokes)); // deep copy stroke data
         c.resolution = this.resolution;
         c.bg_color = this.bg_color;
         c.bg_opacity = this.bg_opacity;
         c.pen_weight = this.pen_weight;
         c.pen_color = this.pen_color;
         c.clear();
-        c.draw();
+        c.loadFromDataURL(this.toDataURL());
         return c;
     }
     constructor(canvas_element) {
@@ -339,7 +411,7 @@ class NotateCanvas {
         // this.pos = { x:this.canvas.offsetLeft, y:this.canvas.offsetTop };
         this.pos = { x:0, y:0 };
         this.bg_color = '#fff';
-        this.bg_opacity = 1.0;
+        this.bg_opacity = 0.4;
         this.default_linewidth = default_linewidth
 
         this.disable_resize = false;
@@ -494,7 +566,7 @@ class NotateCanvas {
                     clone.style.top  = (site_bounds.height/2 - bounds.height/2) + "px";
                     clone.style.width = bounds.width + "px";
                     clone.style.height = bounds.height + "px";
-                    clone.backgroundColor = "#fff";
+                    clone.style.backgroundColor = "#fff";
                     clone.style.zIndex = "6";
                     clone.style.transform = "scale(" + scaleX + "," + scaleX + ")";
                     clone.style.border = "none";
@@ -569,7 +641,7 @@ class NotateCanvas {
                         notate_clone.clear();
                     });
                     attachEvents(erase_icon, function() {
-                        notate_clone.setPenColor('#fff'); // for now, eraser is just a bigger white pen
+                        notate_clone.setPenColor('erase'); // erase is a special setting
                         notate_clone.setPenWeight(5);
                         erase_icon.style.opacity = 0.8;
                         erase_icon.is_toggled = true;
@@ -577,7 +649,7 @@ class NotateCanvas {
                         pen_icon.is_toggled = false;
                     });
                     attachEvents(pen_icon, function() {
-                        notate_clone.setPenColor('#000'); // for now, eraser is just a bigger white pen
+                        notate_clone.setPenColor('#000');
                         notate_clone.setPenWeight(2);
                         pen_icon.style.opacity = 0.8;
                         pen_icon.is_toggled = true;
@@ -702,6 +774,22 @@ class NotateCanvas {
             img.src = src;
         });
     }
+    // Draws white background behind entire canvas before exporting.
+    // Only use when you need to export to file or Python.
+    toOpaqueDataURL() {
+        // create backing canvas
+        let backCanvas = document.createElement('canvas');
+        backCanvas.width = this.canvas.width;
+        backCanvas.height = this.canvas.height;
+        let backCtx = backCanvas.getContext('2d');
+
+        // Draw white background and overlay the contents of this canvas
+        backCtx.fillStyle = "#fff";
+        backCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        backCtx.drawImage(this.canvas, 0,0);
+
+        return backCanvas.toDataURL();
+    }
     toDataURL() {
         return this.canvas.toDataURL();
     }
@@ -741,20 +829,25 @@ class NotateCanvas {
         this.strokes = strokes;
     }
     setPenColor(color) {
-        this.pen_color = color;
+        if (color === 'erase')
+            this.ctx.globalCompositeOperation = "destination-out";
+        else {
+            this.ctx.globalCompositeOperation = "source-over";
+            this.pen_color = color;
+        }
     }
     setPenWeight(weight) {
         this.pen_weight = weight;
     }
     clear() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        if (this.bg_color) { // Draw background if set.
-            const gl_a = this.ctx.globalAlpha;
-            if (this.bg_opacity < 1.0) this.ctx.globalAlpha = this.bg_opacity;
-            this.ctx.fillStyle = this.bg_color;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-            if (this.bg_opacity < 1.0) this.ctx.globalAlpha = gl_a;
-        }
+        // if (this.bg_color) { // Draw background if set.
+        //     const gl_a = this.ctx.globalAlpha;
+        //     if (this.bg_opacity < 1.0) this.ctx.globalAlpha = this.bg_opacity;
+        //     this.ctx.fillStyle = this.bg_color;
+        //     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        //     if (this.bg_opacity < 1.0) this.ctx.globalAlpha = gl_a;
+        // }
     }
     draw() {
         this.strokes.forEach(this.drawStroke.bind(this));
