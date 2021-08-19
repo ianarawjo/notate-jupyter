@@ -104,22 +104,30 @@ define([
           'ctrl-enter': function(evt, data) {},
           'shift-enter': function(evt, data) {
               // Running a cell that includes a canvas
+              var cell = Jupyter.notebook.get_selected_cell();
+              var cm = cell.code_mirror;
 
-              // var cell = Jupyter.notebook.get_selected_cell();
+              // Find all unique canvas id's in the selected cell
+              let activatedCanvasIds = [];
+              let cursor = cm.getSearchCursor(/__c_([0-9]+)__/g);
+              while(cursor.findNext())
+                  activatedCanvasIds.push(cm.getRange(cursor.from(), cursor.to()));
 
               // Convert canvases to PNGs and encode as base64 str
               // to 'send' to corresponding Python variables:
               let data_urls = {};
               let code = 'import base64\nimport numpy as np\nfrom io import BytesIO\nfrom PIL import Image\n';
-              for (var idx in canvases) {
+              for (let idx of activatedCanvasIds) {
+                  if (!(idx in canvases)) {
+                      console.warn('@ Run cell: Could not find a notate canvas with id', idx, 'Skipping...');
+                      continue;
+                  }
                   console.log(idx, canvases[idx]);
                   data_urls[idx] = canvases[idx].toOpaqueDataURL().split(',')[1];
                   code += idx + '=1-np.array(Image.open(BytesIO(base64.b64decode("' + data_urls[idx] + '"))).convert("L"), dtype="uint8")/255\n';
               }
 
               // Insert artificial code into cell
-              var cell = Jupyter.notebook.get_selected_cell();
-              var cm = cell.code_mirror;
               cell.get_text = function() {
                   let raw_code = this.code_mirror.getValue();
                   let lines = raw_code.split("\n");
