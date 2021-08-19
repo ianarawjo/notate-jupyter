@@ -6,6 +6,23 @@ define([
     'notebook/js/codecell'
 ], function(requirejs, $, Jupyter, events, codecell) {
 
+      // The Python code silectly injected when cells are run:
+      const PYCODE_SETUP = `
+import base64
+import numpy as np
+from io import BytesIO
+from PIL import Image
+class NotateArray(np.ndarray):
+    def __new__(cls, input_array, locals=None):
+        obj = np.asarray(input_array).view(cls)
+        obj.locals = locals
+        return obj
+
+    def __array_finalize__(self, obj):
+        if obj is None: return
+        self.locals = getattr(obj, 'locals', None)
+`;
+
       // For keeping track of canvases and copy-paste function:
       var canvases = {};
       var CodeCell = codecell.CodeCell;
@@ -149,7 +166,7 @@ define([
               // Convert canvases to PNGs and encode as base64 str
               // to 'send' to corresponding Python variables:
               let data_urls = {};
-              let code = 'import base64\nimport numpy as np\nfrom io import BytesIO\nfrom PIL import Image\n';
+              let code = PYCODE_SETUP;// 'import base64\nimport numpy as np\nfrom io import BytesIO\nfrom PIL import Image\n';
               for (let idx of activatedCanvasIds) {
                   if (!(idx in canvases)) {
                       console.warn('@ Run cell: Could not find a notate canvas with id', idx, 'Skipping...');
@@ -169,7 +186,8 @@ define([
                       if (line.includes('__c_')) {
                           let idx = line.lastIndexOf('__)');
                           if (idx > -1) {
-                              line = line.slice(0, idx+2) + ", locals()" + line.slice(idx+2);
+                              let beg_igx = line.lastIndexOf('__c_')
+                              line = line.slice(0, beg_igx) + "NotateArray(" + line.slice(beg_igx, idx+2) + ", locals())" + line.slice(idx+2);
                           }
                       }
                       corrected_code += line + '\n';
@@ -282,7 +300,7 @@ define([
                 cell.metadata['notate_canvi'] = {};
 
             // Insert new canvas on Ctrl+Enter key press:
-            cm.addKeyMap({"Ctrl-Enter":function(cm) {
+            cm.addKeyMap({"Ctrl-\\":function(cm) {
                 // Create new HTML canvas element + setup
                 let canvas = create_canvas(600, 240);
 
