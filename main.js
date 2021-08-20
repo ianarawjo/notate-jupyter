@@ -130,14 +130,12 @@ class NotateArray(np.ndarray):
         // Incredibly sketchy wrapper over Jupyter saving.
         // Attempts to cleanup excess metadata in cells before saving.
         var origSaveNotebook = Jupyter.notebook.__proto__.save_notebook.bind(Jupyter.notebook);
-        console.log('whaaa');
         Jupyter.notebook.__proto__.save_notebook = function() {
             let cells = Jupyter.notebook.get_cells();
             for (let cell of cells)
                 cleanupCellMetadata(cell);
             origSaveNotebook();
         };
-        console.log(Jupyter.notebook.save_notebook);
 
         // See https://github.com/jupyter/notebook/blob/42227e99f98c3f6b2b292cbef85fa643c8396dc9/notebook/static/services/kernels/kernel.js#L728
         function run_code_silently(code, cb) {
@@ -187,7 +185,6 @@ class NotateArray(np.ndarray):
                       console.warn('@ Run cell: Could not find a notate canvas with id', idx, 'Skipping...');
                       continue;
                   }
-                  console.log(idx, canvases[idx]);
                   data_urls[idx] = canvases[idx].toOpaqueDataURL().split(',')[1];
                   code += idx + '=1-np.array(Image.open(BytesIO(base64.b64decode("' + data_urls[idx] + '"))).convert("L"), dtype="uint8")/255\n';
               }
@@ -335,7 +332,6 @@ class NotateArray(np.ndarray):
             let just_pasted = false;
             cm.on('change', function(cm, event) { // 'After paste' event
                 if (just_pasted !== false) {
-                    console.log('after paste party');
 
                     // Search the text for matches of NotateCanvas id's.
                     // Replace all matches with corresponding canvas elements.
@@ -405,8 +401,6 @@ class NotateArray(np.ndarray):
       };
 });
 
-// A Stroke is a dict object (struct) with elements:
-// { 'pts':[...], 'weight':overall_line_width, 'color':... }
 var NotateCanvasManager = (function() {
     const canvases = [];
     return {
@@ -584,8 +578,6 @@ class NotateCanvas {
                     }
                     this.loadFromImage(this.saved_img, false);
                     e.preventDefault();
-
-                    console.log("pointer leave");
                 }
             }
             this.canvas.style.border = default_border;
@@ -1020,275 +1012,8 @@ class NotateWebSocket {
     }
 }
 
-/* TODO: Move these to separate requirejs modules called from define[] */
-// var Board = (function() {
-//    var boardObject = {
-//      resolution: 2,
-//      dom: null,
-//      ctx: null,
-//      domMem: null,
-//      ctxMem: null,
-//      bgColor: '#ffffff',
-//      pos: {
-//        x: 0,
-//        y: 0
-//      },
-//      loadToMemory: function loadToMemory(event) {
-//        var imageObj = event.target;
-//        this.domMem.width = imageObj.width;
-//        this.domMem.height = imageObj.height;
-//        this.ctxMem.drawImage(imageObj, 0, 0);
-//        this.ctx.drawImage(imageObj, 0, 0);
-//      },
-//      init: function init(canvas) {
-//        this.dom = canvas;
-//        this.ctx = this.dom.getContext('2d', {desynchronized: true});
-//
-//        // Additional Configuration
-//        this.ctx.imageSmoothingEnabled = true;
-//
-//        // Create buffer
-//        this.domMem = document.createElement('canvas');
-//        this.ctxMem = this.domMem.getContext('2d');
-//        this.ctxMem.fillStyle = this.bgColor;
-//        // this.ctxMem.fillRect(0,0, this.domMem.width, this.domMem.height);
-//
-//        // Set up sizing
-//        // fitToWindow.bind(this)();
-//        // window.addEventListener('resize', fitToWindow.bind(this));
-//
-//        // Load canvas from local storage
-//        localStorage.setItem('dataURL', null); // disable saving for now
-//        // if (localStorage.dataURL) {
-//        //   var img = new window.Image();
-//        //   img.addEventListener('load', this.loadToMemory.bind(this));
-//        //   img.setAttribute('src', localStorage.dataURL);
-//        // }
-//      },
-//      getPointerPos: function getPointerPos(event) {
-//        return {
-//          x: (event.offsetX - this.pos.x) * this.resolution,
-//          y: (event.offsetY - this.pos.y) * this.resolution
-//        }
-//      },
-//      storeMemory: function storeMemory() {
-//        this.ctxMem.drawImage(this.dom, 0, 0);
-//        localStorage.setItem('dataURL', this.domMem.toDataURL());
-//      },
-//      clearMemory: function clearMemory() {
-//        localStorage.clear();
-//        this.ctx.fillStyle = this.bgColor;
-//        this.ctx.fillRect(0,0, this.dom.width, this.dom.height);
-//        this.domMem.width = this.dom.width;
-//        this.domMem.height = this.dom.height;
-//        this.ctxMem.fillStyle = this.bgColor;
-//        this.ctxMem.fillRect(0,0, this.dom.width, this.dom.height);
-//      }
-//    };
-//
-//     var fitToWindow = function fitToWindow() {
-//       var marginX = 10;
-//       var marginY = 10;
-//
-//       var nb_panel_div = document.getElementById("notebook"); // Jupyter.notebook.element.parentElement;
-//
-//       var heightCss = nb_panel_div.clientHeight - marginY;
-//       var heightCanvas = heightCss * this.resolution;
-//       var widthCss = nb_panel_div.clientWidth - marginX;
-//       var widthCanvas = widthCss * this.resolution;
-//
-//       // If new size is larger than memory
-//       if (widthCanvas > this.domMem.width || heightCanvas > this.domMem.height) {
-//         // Create buffer
-//         var bufferCanvas = document.createElement('canvas');
-//         var bufferCtx = bufferCanvas.getContext('2d');
-//
-//         bufferCanvas.width = this.domMem.width;
-//         bufferCanvas.height = this.domMem.height;
-//
-//         // Clear buffer
-//         bufferCtx.fillStyle = this.bgColor;
-//         // bufferCtx.fillRect(0, 0, widthCanvas, heightCanvas);
-//
-//         // Save canvas to buffer
-//         bufferCtx.drawImage(this.dom, 0, 0);
-//
-//         // Resize memory
-//         if (this.domMem.width < widthCanvas) this.domMem.width = widthCanvas;
-//         if (this.domMem.height < heightCanvas) this.domMem.height = heightCanvas;
-//         this.ctxMem.drawImage(bufferCanvas, 0, 0);
-//       } else {
-//         this.ctxMem.drawImage(this.dom, 0 ,0);
-//       }
-//
-//       // resize current canvas
-//       this.dom.style.height = heightCss + 'px';
-//       this.dom.style.width = widthCss + 'px';
-//       this.dom.width = widthCanvas;
-//       this.dom.height = heightCanvas;
-//       this.ctx.fillStyle = this.bgColor;
-//       // this.ctx.fillRect(0,0, this.dom.width, this.dom.height);
-//       this.ctx.drawImage(this.domMem, 0, 0);
-//
-//       this.pos.x = this.dom.offsetLeft;
-//       this.pos.y = this.dom.offsetTop;
-//     }
-//
-//    return boardObject;
-// })();
-// var Pen = (function() {
-//   var pen = {
-//     colors: {
-//       fg: '#555',
-//       bg: '#FFF'
-//     },
-//     lineWidth: 4,
-//     type: 'mouse',
-//     lineJoin: 'round',
-//     funcType: null,
-//     funcTypes: {
-//       draw: 'draw',
-//       erase: 'draw erase',
-//       menu: 'menu'
-//     },
-//     init: function init(context) {
-//       context.lineJoin = this.lineJoin;
-//       context.lineWidth = this.lineWidth;
-//       context.strokeStyle = this.color;
-//     },
-//     set: function set(context, config) {
-//       context.lineWidth = config.lineWidth;
-//       context.strokeStyle = config.color;
-//       context.lineJoin = this.lineJoin;
-//     },
-//     setFuncType: function setFuncType(pointerEvent) {
-//       if      (checkMenuKey(pointerEvent)) this.funcType = this.funcTypes.menu;
-//       else if (checkEraseKeys(pointerEvent)) this.funcType = this.funcTypes.erase;
-//       else this.funcType = this.funcTypes.draw;
-//       return this.funcType;
-//     },
-//     setPen: function setPen(context, pointerEvent) {
-//       switch(this.funcType) {
-//         case this.funcTypes.erase: {
-//           this.set(context, {
-//             color: this.colors.bg,
-//             lineWidth: 25
-//           });
-//           break;
-//         }
-//         case this.funcTypes.draw: {
-//           this.set(context, {
-//             color: this.colors.fg,
-//             lineWidth: getLineWidth(pointerEvent)
-//           });
-//           break;
-//         }
-//       }
-//     },
-//     release: function release() {
-//       this.funcType = null;
-//     }
-//   }
-//
-//   var getLineWidth = function getLineWidth(e) {
-//     switch (e.pointerType) {
-//       case 'touch': {
-//         if (e.width < 10 && e.height < 10) {
-//           return (e.width + e.height) * 2 + 10;
-//         } else {
-//           return (e.width + e.height - 40) / 2;
-//         }
-//       }
-//       case 'pen': return e.pressure * 8;
-//       default: return (e.pressure) ? e.pressure * 8 : 4;
-//     }
-//   }
-//
-//   var checkEraseKeys = function checkEraseKeys(e) {
-//     if (e.buttons === 32) return true;
-//     else if (e.buttons === 1 && e.shiftKey) return true;
-//     return false;
-//   }
-//   var checkMenuKey = function checkMenuKey(e) {
-//     return (e.buttons === 1 && e.ctrlKey);
-//   }
-//
-//   function openMenu(e) {
-//     console.log('Menu', e.pageX, e.pageY);
-//   }
-//
-//   return pen;
-// })();
-//
-//
-// /*
-//     Singleton that stores pointer events.
-// */
-// // class PointerManager {
-// //     constructor() {
-// //         this._
-// //     }
-// // }
-//
-// var Pointer = (function() {
-//
-//   var size = 0;
-//   var hashMap = {};
-//
-//   var Pointer = function Pointer(pointerId) {
-//     this.pointerId = pointerId;
-//     this.pos1 = {
-//       x: -1,
-//       y: -1
-//     };
-//     this.pos0 = {
-//       x: -1,
-//       y: -1
-//     };
-//     this.isClicked = false;
-//
-//     Pointer.addPointer(this);
-//   }
-//
-//   // Static Methodst
-//   Pointer.get = function get(pointerId) {
-//     return hashMap[pointerId];
-//   }
-//   Pointer.destruct = function destruct(pointerId) {
-//     this.removePointer(pointerId);
-//   }
-//   Pointer.addPointer = function addPointer(pointer) {
-//     hashMap[pointer.pointerId] = pointer;
-//     size += 1;
-//   }
-//   Pointer.removePointer = function removePointer(pointerId) {
-//     if (hashMap[pointerId]) {
-//       delete hashMap[pointerId];
-//       size -= 1;
-//       if (size == 0 && Pointer.onEmpty) {
-//         Pointer.onEmpty();
-//       }
-//     }
-//   }
-//   Pointer.onEmpty = null;
-//
-//   // OO Methods
-//   Pointer.prototype = {
-//     constructor: Pointer,
-//     release: function release() {
-//       this.isClicked = false;
-//       this.pos0.y = -1;
-//       this.pos0.x = -1;
-//     },
-//     set: function set(pos) {
-//       this.pos1.x = pos.x;
-//       this.pos1.y = pos.y;
-//     }
-//   }
-//
-//   return Pointer;
-// })();
 
+// ========= END MAIN; HELPER SCRIPT BELOW =============
 // CodeMirror search extension
 // CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: https://codemirror.net/LICENSE

@@ -14,8 +14,16 @@ Pass handwritten digits to an MNIST recognizer for all I care! Here's an example
 - Drag sides of canvas to resize. (Pixel-perfect resize is not yet available.)
 - Click on a canvas to enter full-screen view. Right now, it only supports a black pen, an eraser, and a 'clear canvas' function. Click off the full-screen view to minimize.
 
-### Required Libraries
+## Install guide
+1. [Install Jupyter Notebook Extensions.](https://jupyter-contrib-nbextensions.readthedocs.io/en/latest/)
+2. Find the nbextensions folder. On Mac, it's in /Users/*yourusername*/Library/Jupyter.
+3. Place the notate-jupyter folder inside.
+4. If you had Jupyter Notebook open, restart it. On the Jupyter Home page, click the Nbextensions tab. Click 'Notate' to enable.
+
+### Required libraries
 - PIL/Pillow (so "from PIL import Image" works)
 - NumPy
+
+Note that I cannot guarantee compatibility with other extensions.
 
 ##### Mileage may vary. Tested on Google Chrome v91.0 with MacOS.
