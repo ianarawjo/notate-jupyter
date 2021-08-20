@@ -3,9 +3,9 @@
 Use Ctrl+\ (Backslash) to inject a canvas at the cursor position in the selected cell. Draw on it:
 ![A handwritten sum equation.](sum_example.png)
 ### 2. Canvases are auto-passed to Python as 2d NumPy arrays (images) upon run.
-In-line, canvases act as variable names. On running the cell, code is silently injected to the top which declares the variables and sets them equal to NumPy image data. (This performs a number of imports: base64, numpy as np, io.BytesIO, and PIL.Image. If you pass the image as a single argument to a function (e.g. foo(*canvas*)) it will also pass the locals() dict as an added '.locals' attribute of the nparray object.)
+In-line, canvases act as variable names. On running the cell, silently injected code sets the variables equal to NumPy image data. (This performs a number of imports: base64, numpy as np, io.BytesIO, and PIL.Image. If you pass the image as a single argument to a function (e.g. foo(*canvas*)) it will also pass the locals() dict as an added '.locals' attribute of the nparray object.)
 ### 3. Do what you want with the output.
-Pass handwritten digits to an MNIST recognizer for all I care! Here's an example of a magical QCR function recognizing a handwritten quantum circuit (function not included!):
+Pass handwritten digits to an MNIST recognizer for all I care! Here's an example of a magical QCR function recognizing a handwritten quantum circuit (function not included):
 
 ![A handwritten quantum circuit magically recognized.](qc_example.png)
 
@@ -21,9 +21,9 @@ Pass handwritten digits to an MNIST recognizer for all I care! Here's an example
 4. If you had Jupyter Notebook open, restart it. On the Jupyter Home page, click the Nbextensions tab. Click 'Notate' to enable.
 
 ### Required libraries
-- PIL/Pillow (so "from PIL import Image" works)
-- NumPy
+- PIL/[Pillow](https://pillow.readthedocs.io/en/stable/installation.html) (so "from PIL import Image" works)
+- [NumPy](https://numpy.org/install/)
 
-Note that I cannot guarantee compatibility with other extensions.
+Relatedly, ensure your namespace doesn't use names Image, BytesIO, or base64 except where imported from the PIL, io, and base64 libraries. Note that I cannot guarantee compatibility with other extensions.
 
 ##### Mileage may vary. Tested on Google Chrome v91.0 with MacOS.
