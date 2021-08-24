@@ -211,7 +211,7 @@ class NotateArray(np.ndarray):
             // First run some background code silently to setup the environment
             // for this cell. The __*__ canvases will become numpy 2d arrays (images)
             run_code_silently(code, function () {
-                Jupyter.notebook.execute_cell_and_select_below();
+                cb();
 
                 // Repair the old get_text so nothing funny happens:
                 cell.get_text = function() {
@@ -222,11 +222,11 @@ class NotateArray(np.ndarray):
         var shortcuts = {
           'ctrl-enter': function(pager, evt) {
               let cell = Jupyter.notebook.get_selected_cell();
-              runCodeForCell(cell, Jupyter.notebook.execute_cell);
+              runCodeForCell(cell, function() { Jupyter.notebook.execute_cell(); });
           },
           'shift-enter': function(pager, evt) {
               let cell = Jupyter.notebook.get_selected_cell();
-              runCodeForCell(cell, Jupyter.notebook.execute_cell_and_select_below);
+              runCodeForCell(cell, function() { Jupyter.notebook.execute_cell_and_select_below(); });
           }
         };
         Jupyter.notebook.keyboard_manager.edit_shortcuts.add_shortcuts(shortcuts);
