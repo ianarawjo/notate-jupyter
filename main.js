@@ -379,6 +379,46 @@ class NotateArray(np.ndarray):
                 }
             });
             cm.on('paste', function(cm, event) {
+                let items = event.clipboardData.items;
+                if (items.length > 0 && items[1]["kind"] === "file" && items[1]["type"].includes("image/")) {
+
+                    let imageBlob = items[1].getAsFile();
+                    let canvas = create_canvas(600, 400);
+                    let ctx = canvas.getContext('2d');
+
+                    // Create an image to render the blob on the canvas
+                    let img = new Image();
+
+                    // Once the image loads, render the img on the canvas
+                    img.onload = function() {
+                        // Update dimensions of the canvas with the dimensions of the image
+                        canvas.width = this.width;
+                        canvas.height = this.height;
+                        canvas.style.width = this.width/2+"px";
+                        canvas.style.height = this.height/2+"px";
+
+                        // Draw the image
+                        ctx.drawImage(img, 0, 0);
+                    };
+
+                    // Crossbrowser support for URL
+                    let URLObj = window.URL || window.webkitURL;
+
+                    // Creates a DOMString containing a URL representing the object given in the parameter
+                    // namely the original Blob
+                    img.src = URLObj.createObjectURL(imageBlob);
+
+                    // Create NotateCanvas and attach event handlers
+                    let notate_canvas = NotateCanvasManager.setup(canvas);
+
+                    // Insert canvas at cursor position in current cell
+                    let c = insert_canvas_at_cursor(cm, canvas);
+
+                    // Index canvas for future reference
+                    canvases[c.idx] = notate_canvas;
+                    notate_canvas.idx = c.idx;
+                    notate_canvas.cell = cell;
+                }
                 txt = event.clipboardData.getData("text");
                 console.log("pasted!", txt);
                 just_pasted = txt;
