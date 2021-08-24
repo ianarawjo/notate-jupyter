@@ -143,7 +143,7 @@ class NotateArray(np.ndarray):
             var callbacks = {
                 shell : {
                     reply : function(msg) {
-                        console.log(msg);
+                        // console.log(msg);
                         if (msg.content.status === 'error') {
                             // handle error
                             console.error('Error running silent code', code);
@@ -163,65 +163,72 @@ class NotateArray(np.ndarray):
             // console.log('tried to run code', code);
         }
 
-        var shortcuts = {
-          'ctrl-enter': function(evt, data) {},
-          'shift-enter': function(evt, data) {
-              // Running a cell that includes a canvas
-              var cell = Jupyter.notebook.get_selected_cell();
-              var cm = cell.code_mirror;
+        // Intercept running code cells to convert canvases
+        let runCodeForCell = function(cell, cb) {
+            // Running a cell that includes a canvas
+            var cm = cell.code_mirror;
 
-              // Find all unique canvas id's in the selected cell
-              let activatedCanvasIds = [];
-              let cursor = cm.getSearchCursor(/__c_([0-9]+)__/g);
-              while(cursor.findNext())
-                  activatedCanvasIds.push(cm.getRange(cursor.from(), cursor.to()));
+            // Find all unique canvas id's in the selected cell
+            let activatedCanvasIds = [];
+            let cursor = cm.getSearchCursor(/__c_([0-9]+)__/g);
+            while(cursor.findNext())
+                activatedCanvasIds.push(cm.getRange(cursor.from(), cursor.to()));
 
-              // Convert canvases to PNGs and encode as base64 str
-              // to 'send' to corresponding Python variables:
-              let data_urls = {};
-              let code = PYCODE_SETUP;// 'import base64\nimport numpy as np\nfrom io import BytesIO\nfrom PIL import Image\n';
-              for (let idx of activatedCanvasIds) {
-                  if (!(idx in canvases)) {
-                      console.warn('@ Run cell: Could not find a notate canvas with id', idx, 'Skipping...');
-                      continue;
-                  }
-                  data_urls[idx] = canvases[idx].toOpaqueDataURL().split(',')[1];
-                  code += idx + '=1-np.array(Image.open(BytesIO(base64.b64decode("' + data_urls[idx] + '"))).convert("L"), dtype="uint8")/255\n';
-              }
+            // Convert canvases to PNGs and encode as base64 str
+            // to 'send' to corresponding Python variables:
+            let data_urls = {};
+            let code = PYCODE_SETUP;// 'import base64\nimport numpy as np\nfrom io import BytesIO\nfrom PIL import Image\n';
+            for (let idx of activatedCanvasIds) {
+                if (!(idx in canvases)) {
+                    console.warn('@ Run cell: Could not find a notate canvas with id', idx, 'Skipping...');
+                    continue;
+                }
+                data_urls[idx] = canvases[idx].toOpaqueDataURL().split(',')[1];
+                code += idx + '=1-np.array(Image.open(BytesIO(base64.b64decode("' + data_urls[idx] + '"))).convert("L"), dtype="uint8")/255\n';
+            }
 
-              // Insert artificial code into cell
-              cell.get_text = function() {
-                  let raw_code = this.code_mirror.getValue();
-                  let lines = raw_code.split("\n");
-                  let corrected_code = "";
-                  lines.forEach((line, i) => {
-                      if (line.includes('__c_')) {
-                          let idx = line.lastIndexOf('__)');
-                          if (idx > -1) {
-                              let beg_igx = line.lastIndexOf('__c_')
-                              line = line.slice(0, beg_igx) + "NotateArray(" + line.slice(beg_igx, idx+2) + ", locals())" + line.slice(idx+2);
-                          }
-                      }
-                      corrected_code += line + '\n';
-                  });
-                  return corrected_code;
-              }.bind(cell);
+            // Insert artificial code into cell
+            cell.get_text = function() {
+                let raw_code = this.code_mirror.getValue();
+                let lines = raw_code.split("\n");
+                let corrected_code = "";
+                lines.forEach((line, i) => {
+                    if (line.includes('__c_')) {
+                        let idx = line.lastIndexOf('__)');
+                        if (idx > -1) {
+                            let beg_igx = line.lastIndexOf('__c_')
+                            line = line.slice(0, beg_igx) + "NotateArray(" + line.slice(beg_igx, idx+2) + ", locals())" + line.slice(idx+2);
+                        }
+                    }
+                    corrected_code += line + '\n';
+                });
+                return corrected_code;
+            }.bind(cell);
 
-              // cm.replaceRange('x = y', {'line':0, 'ch':0});
-              // console.log('HELLO WORLD', cell);
+            // cm.replaceRange('x = y', {'line':0, 'ch':0});
+            // console.log('HELLO WORLD', cell);
 
-              // First run some background code silently to setup the environment
-              // for this cell. The __*__ canvases will become numpy 2d arrays (images)
-              run_code_silently(code, function () {
-                  Jupyter.notebook.execute_cell_and_select_below();
+            // First run some background code silently to setup the environment
+            // for this cell. The __*__ canvases will become numpy 2d arrays (images)
+            run_code_silently(code, function () {
+                Jupyter.notebook.execute_cell_and_select_below();
 
-                  // Repair the old get_text so nothing funny happens:
-                  cell.get_text = function() {
-                      return this.code_mirror.getValue();
-                  }.bind(cell);
-              });
-          }
+                // Repair the old get_text so nothing funny happens:
+                cell.get_text = function() {
+                    return this.code_mirror.getValue();
+                }.bind(cell);
+            });
         }
+        var shortcuts = {
+          'ctrl-enter': function(pager, evt) {
+              let cell = Jupyter.notebook.get_selected_cell();
+              runCodeForCell(cell, Jupyter.notebook.execute_cell);
+          },
+          'shift-enter': function(pager, evt) {
+              let cell = Jupyter.notebook.get_selected_cell();
+              runCodeForCell(cell, Jupyter.notebook.execute_cell_and_select_below);
+          }
+        };
         Jupyter.notebook.keyboard_manager.edit_shortcuts.add_shortcuts(shortcuts);
         Jupyter.notebook.keyboard_manager.command_shortcuts.add_shortcuts(shortcuts);
 
@@ -247,18 +254,6 @@ class NotateArray(np.ndarray):
             return canvas;
         }
 
-        function attach_handlers(canvas) {
-
-            // Add pen-based draw capabilities to canvas w/ draw library code:
-            let notate_canvas = NotateCanvasManager.setup(canvas);
-
-            // Send updates over NotateWebSocket:
-            if (socket)
-                notate_canvas.attachSocket(socket);
-
-            return notate_canvas;
-        }
-
         // Get all code cells
         var code_cells = Jupyter.notebook.get_cells().filter(
             function(cell) {
@@ -266,7 +261,7 @@ class NotateArray(np.ndarray):
         });
 
         // Attach the canvas-tear event handler
-        code_cells.forEach(function (cell, i) {
+        let attachCanvasEventHandlers = function(cell) {
             let cm = cell.code_mirror;
             let insert_canvas_at_pos = function(from, to, cm, canvas) {
                 cm.markText(from, to, {replacedWith:canvas});
@@ -294,7 +289,7 @@ class NotateArray(np.ndarray):
                         let canvas = create_canvas(600, 240);
 
                         // Create NotateCanvas and attach event handlers
-                        let notate_canvas = attach_handlers(canvas);
+                        let notate_canvas = NotateCanvasManager.setup(canvas);
 
                         // Load canvas with saved image data
                         notate_canvas.loadFromDataURL(cell.metadata['notate_canvi'][idx])
@@ -317,7 +312,7 @@ class NotateArray(np.ndarray):
                 let canvas = create_canvas(600, 240);
 
                 // Create NotateCanvas and attach event handlers
-                let notate_canvas = attach_handlers(canvas);
+                let notate_canvas = NotateCanvasManager.setup(canvas);
 
                 // Insert canvas at cursor position in current cell
                 let c = insert_canvas_at_cursor(cm, canvas);
@@ -388,7 +383,18 @@ class NotateArray(np.ndarray):
                 console.log("pasted!", txt);
                 just_pasted = txt;
             });
+        };
+
+
+        // Add event handlers to all preloaded cells
+        code_cells.forEach(attachCanvasEventHandlers);
+
+        // Intercept cell creation to add event handlers
+        $([IPython.events]).on("create.Cell", function(evt, data) {
+            attachCanvasEventHandlers(data["cell"]);
         });
+
+
         // Add a default cell if there are no cells
         // if (Jupyter.notebook.get_cells().length===1){
         //   add_cell();
