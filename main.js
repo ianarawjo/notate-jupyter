@@ -380,7 +380,7 @@ class NotateArray(np.ndarray):
             });
             cm.on('paste', function(cm, event) {
                 let items = event.clipboardData.items;
-                if (items.length > 0 && items[1]["kind"] === "file" && items[1]["type"].includes("image/")) {
+                if (items.length > 1 && items[1]["kind"] === "file" && items[1]["type"].includes("image/")) {
 
                     let imageBlob = items[1].getAsFile();
                     let canvas = create_canvas(600, 400);
