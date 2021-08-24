@@ -384,32 +384,16 @@ class NotateArray(np.ndarray):
 
                     let imageBlob = items[1].getAsFile();
                     let canvas = create_canvas(600, 400);
-                    let ctx = canvas.getContext('2d');
 
-                    // Create an image to render the blob on the canvas
-                    let img = new Image();
-
-                    // Once the image loads, render the img on the canvas
-                    img.onload = function() {
-                        // Update dimensions of the canvas with the dimensions of the image
-                        canvas.width = this.width;
-                        canvas.height = this.height;
-                        canvas.style.width = this.width/2+"px";
-                        canvas.style.height = this.height/2+"px";
-
-                        // Draw the image
-                        ctx.drawImage(img, 0, 0);
-                    };
+                    // Create NotateCanvas and attach event handlers
+                    let notate_canvas = NotateCanvasManager.setup(canvas);
 
                     // Crossbrowser support for URL
                     let URLObj = window.URL || window.webkitURL;
 
                     // Creates a DOMString containing a URL representing the object given in the parameter
                     // namely the original Blob
-                    img.src = URLObj.createObjectURL(imageBlob);
-
-                    // Create NotateCanvas and attach event handlers
-                    let notate_canvas = NotateCanvasManager.setup(canvas);
+                    notate_canvas.loadFromDataURL(URLObj.createObjectURL(imageBlob));
 
                     // Insert canvas at cursor position in current cell
                     let c = insert_canvas_at_cursor(cm, canvas);
