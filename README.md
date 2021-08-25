@@ -9,6 +9,10 @@ Pass handwritten digits to an MNIST recognizer for all I care! Here's an example
 
 ![A handwritten quantum circuit magically recognized.](qc_example.png)
 
+And here's an obligatory MNIST example (see examples/ folder for more):
+
+![Passing canvases of numbers 1 2 3 through a Keras recognizer.](mnist_example.png)
+
 ### Extra features
 - You can copy+paste canvases like you would text.
 - Drag sides of canvas to resize. (Pixel-perfect resize is not yet available.)
