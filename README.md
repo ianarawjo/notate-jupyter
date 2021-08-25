@@ -17,6 +17,7 @@ And here's an obligatory MNIST example (see examples/ folder for more):
 - You can copy+paste canvases like you would text.
 - Drag sides of canvas to resize. (Pixel-perfect resize is not yet available.)
 - Click on a canvas to enter full-screen view. Right now, it only supports a black pen, an eraser, and a 'clear canvas' function. Click off the full-screen view to minimize.
+- *Experimental:* You can also paste images and they will be loaded into a canvas. You could, for instance, set a variable equal to an image copied from Google Images. 
 
 ## Install guide
 1. [Install Jupyter Notebook Extensions.](https://jupyter-contrib-nbextensions.readthedocs.io/en/latest/)
