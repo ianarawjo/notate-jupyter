@@ -481,7 +481,7 @@ class NotateCanvas {
         this.ctx = this.canvas.getContext('2d', {
             desynchronized: false
         });
-        this.ctx.imageSmoothingEnabled = true;
+        this.ctx.imageSmoothingEnabled = true; // anti-aliasing
 
         const default_linewidth = 2;
         const default_color = '#000';
@@ -566,7 +566,7 @@ class NotateCanvas {
 
             } else if (!this.disable_resize) {
                 // Bottom-right resize
-                const d = 30;
+                const d = 20;
                 if (pos.x >= this.canvas.width - d && pos.y >= this.canvas.height - d) {
                     this.canvas.style.cursor = "nwse-resize";
                     this.canvas.style.borderRight = "3px solid gray";
@@ -615,8 +615,11 @@ class NotateCanvas {
         let pointerUp = function pointerUp(e) {
             if (this.pointer_down) {
                 if (this.resizing !== false) { // End of resizing canvas operation.
-                    this.loadFromImage(this.saved_img, false);
-                    this.saveMetadataToCell(); // Save resized image to cell metadata
+                    if (this.pointer_moved) {
+                        this.loadFromImage(this.saved_img, false);
+                        this.saveMetadataToCell(); // Save resized image to cell metadata
+                    } else // Open modal input asking for specific width/height pixel values
+                        this.openChangeSizeDialog();
                 } else if (!this.pointer_moved && !this.disable_expand) { // Clicked the canvas.
                     // this.canvas.style.border = "thick solid #000000"
 
@@ -955,6 +958,56 @@ class NotateCanvas {
             this.ctx.closePath();
             this.ctx.stroke();
         }
+    }
+
+    openChangeSizeDialog() {
+        let _this = this;
+        const MAX_WIDTH = 1440;
+        const MAX_HEIGHT = 900;
+        $('<form>Width: <input type="text" style="z-index:10000" name="width"> px<br><br>Height: <input type="text" style="z-index:10000" name="height"> px<br></form>').dialog({
+          modal: true,
+          open: function(evt, ui) {
+            // We have to stop the keypresses from bubbling up to Jupyter listeners
+            $('input[name="width"]').keydown(function(evt) {
+              evt.stopPropagation();
+            });
+            $('input[name="height"]').keydown(function(evt) {
+              evt.stopPropagation();
+            });
+          },
+          close: function() {
+            $(this).remove();
+          },
+          buttons: {
+            'OK': function () {
+              let width = Number.parseInt($('input[name="width"]').val());
+              let height = Number.parseInt($('input[name="height"]').val());
+              if (!Number.isNaN(width) && !Number.isNaN(height) && width > 0 && height > 0) {
+                console.log("Entered new size for canvas:", width, "by", height);
+                if (width > MAX_WIDTH) {
+                  width = MAX_WIDTH;
+                  console.warn("Entered width exceeds MAX_WIDTH. Capping at", MAX_WIDTH);
+                }
+                if (height > MAX_HEIGHT) {
+                  height = MAX_HEIGHT;
+                  console.warn("Entered height exceeds MAX_WIDTH. Capping at", MAX_HEIGHT);
+                }
+                _this.canvas.style.width = Math.floor(width) + "px";
+                _this.canvas.width = Math.floor(width) * 2;
+                _this.canvas.style.height = Math.floor(height) + "px";
+                _this.canvas.height = Math.floor(height) * 2;
+                _this.loadFromImage(_this.saved_img, false);
+                _this.saveMetadataToCell(); // Save resized image to cell metadata
+              } else console.error("Entered value is not a positive integer.", width, height)
+              $(this).dialog('close');
+              $(this).remove();
+            },
+            'Cancel': function () {
+              $(this).dialog('close');
+              $(this).remove();
+            }
+          }
+        });
     }
 }
 
