@@ -120,6 +120,21 @@ class NotateArray(np.ndarray):
       // This function is called when a notebook is started.
       function load_ipython_extension() {
 
+        // Load any libraries.
+        $('<script></script>')
+            .attr({
+                charset: "utf-8",
+                src: requirejs.toUrl('./libs/spectrum.min.js')
+            })
+            .appendTo('head');
+        $('<link>')
+            .attr({
+                rel: 'stylesheet',
+                type: 'text/css',
+                href: requirejs.toUrl('./libs/spectrum.min.css')
+            })
+            .appendTo('head');
+
         // events.on('execute.CodeCell', function(evt, data) {
         //     var cell = data.cell;
         //     var cm = cell.code_mirror;
@@ -507,7 +522,8 @@ class NotateCanvas {
         // Attach pointer event listeners
         let pointerEnter = function pointerEnter(e) {
             let _this = this;
-            this.canvas.style.border = hover_border;
+            if (!this.disable_expand)
+                this.canvas.style.border = hover_border;
             this.saved_img = null;
             this.toImage().then(function (img) {
                 _this.saved_img = img;
@@ -610,7 +626,8 @@ class NotateCanvas {
                     e.preventDefault();
                 }
             }
-            this.canvas.style.border = default_border;
+            if (!this.disable_expand)
+                this.canvas.style.border = default_border;
         }.bind(this);
         let pointerUp = function pointerUp(e) {
             if (this.pointer_down) {
@@ -622,6 +639,7 @@ class NotateCanvas {
                         this.openChangeSizeDialog();
                 } else if (!this.pointer_moved && !this.disable_expand) { // Clicked the canvas.
                     // this.canvas.style.border = "thick solid #000000"
+                    let _this = this;
 
                     // A black, translucent background for the popover:
                     let site = document.getElementsByTagName("BODY")[0];
@@ -662,6 +680,7 @@ class NotateCanvas {
                     notate_clone.disable_resize = true;
                     notate_clone.disable_expand = true;
                     notate_clone.strokes = this.strokes;
+                    notate_clone.setPenColor(this.pen_color);
                     notate_clone.idx = this.idx;
                     notate_clone.cell = this.cell;
                     notate_clone.clear();
@@ -705,19 +724,43 @@ class NotateCanvas {
                         return i;
                     }
                     let trash_icon, erase_icon, pen_icon;
-                    let rightedge = (site_bounds.width/2 - bounds.width/2*scaleX) + bounds.width*scaleX;
+                    let leftedge = (site_bounds.width/2 - bounds.width/2*scaleX);
                     let topedge = site_bounds.height/2 - bounds.height/2*scaleX
-                    trash_icon = createIcon("trash");
-                    trash_icon.style.left = (rightedge - 40) + "px";
-                    trash_icon.style.top  = (topedge + 20) + "px";
-                    erase_icon = createIcon("eraser");
-                    erase_icon.style.left = (rightedge - 80) + "px";
-                    erase_icon.style.top  = (topedge + 20) + "px";
                     pen_icon = createIcon("pencil");
-                    pen_icon.style.left = (rightedge - 120) + "px";
+                    pen_icon.style.left = (leftedge - 40) + "px";
                     pen_icon.style.top  = (topedge + 20) + "px";
+                    erase_icon = createIcon("eraser");
+                    erase_icon.style.left = (leftedge - 40) + "px";
+                    erase_icon.style.top  = (topedge + 100) + "px";
+                    trash_icon = createIcon("trash");
+                    trash_icon.style.left = (leftedge - 40) + "px";
+                    trash_icon.style.top  = (topedge + 140) + "px";
                     pen_icon.style.opacity = 0.8;
                     pen_icon.is_toggled = true;
+
+                    // Spectrum.js library color picker
+                    let color_picker = $('<input id="color-picker" value="' + this.getPenColor() + '" />');
+                    $("body").append(color_picker);
+                    $(color_picker).spectrum({
+                        type: "color",
+                        change: function(clr) {
+                            notate_clone.setPenColor(clr);
+                            _this.setPenColor(clr);
+                        }
+                    });
+                    $(".sp-replacer").css({
+                        "position": "absolute",
+                        "display": "block",
+                        "left": (leftedge - 40) + "px",
+                        "top": (topedge + 60) + "px",
+                        "z-index": "7"
+                    });
+                    $(color_picker).click(function(evt) {
+                      evt.stopPropagation();
+                    });
+                    $(color_picker).keydown(function(evt) {
+                      evt.stopPropagation();
+                    });
 
                     attachEvents(trash_icon, function() {
                         notate_clone.strokes = [];
@@ -740,6 +783,19 @@ class NotateCanvas {
                         erase_icon.is_toggled = false;
                     });
 
+                    // Background for toolbar
+                    let bg_toolbar = document.createElement('div');
+                    bg_toolbar.style.position = "absolute";
+                    bg_toolbar.style.display = "block";
+                    bg_toolbar.style.width = "48px";
+                    bg_toolbar.style.height = "168px";
+                    bg_toolbar.style.borderRadius = "8px 0px 0px 8px";
+                    bg_toolbar.style.backgroundColor = "#ccc";
+                    bg_toolbar.style.zIndex = "6";
+                    bg_toolbar.style.left = (leftedge - 48) + "px";
+                    bg_toolbar.style.top = (topedge + 8) + "px";
+
+                    site.appendChild(bg_toolbar);
                     site.appendChild(trash_icon);
                     site.appendChild(erase_icon);
                     site.appendChild(pen_icon);
@@ -755,6 +811,9 @@ class NotateCanvas {
                         // Remove modal elements:
                         site.removeChild(bg);
                         site.removeChild(clone);
+                        site.removeChild(bg_toolbar);
+                        $(color_picker).spectrum("destroy");
+                        color_picker.remove();
                         site.removeChild(trash_icon);
                         site.removeChild(erase_icon);
                         site.removeChild(pen_icon);
@@ -918,6 +977,10 @@ class NotateCanvas {
             this.ctx.globalCompositeOperation = "source-over";
             this.pen_color = color;
         }
+    }
+    getPenColor() {
+        if (this.pen_color === 'erase') return "#000000";
+        else return this.pen_color;
     }
     setPenWeight(weight) {
         this.pen_weight = weight;
