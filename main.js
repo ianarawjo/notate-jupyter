@@ -199,7 +199,7 @@ class NotateArray(np.ndarray):
                     continue;
                 }
                 data_urls[idx] = canvases[idx].toOpaqueDataURL().split(',')[1];
-                code += idx + '=1-np.array(Image.open(BytesIO(base64.b64decode("' + data_urls[idx] + '"))).convert("L"), dtype="uint8")/255\n';
+                code += idx + '=np.array(Image.open(BytesIO(base64.b64decode("' + data_urls[idx] + '"))).convert("RGB"), dtype="uint8")\n';
             }
 
             // Insert artificial code into cell
