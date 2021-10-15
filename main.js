@@ -13,12 +13,15 @@
 // You should have received a copy of the GNU Lesser General Public License v3
 // along with this program.  If not, see <https://www.gnu.org/licenses/lgpl-3.0.en.html>.
 
+
+
 define([
     'require',
     'jquery',
     'base/js/namespace',
     'base/js/events',
-    'notebook/js/codecell'
+    'notebook/js/codecell',
+    'nbextensions/notate-jupyter/libs/spectrum.min',
 ], function(requirejs, $, Jupyter, events, codecell) {
 
       // The Python code silectly injected when cells are run:
@@ -105,35 +108,21 @@ class NotateArray(np.ndarray):
           }
       };
 
-      var initialize = function () {
-        // == Add any relative css to the page ==
-        // Add Font Awesome 4.7 Icons:
-        $('<link/>')
-            .attr({
-                rel: 'stylesheet',
-                type: 'text/css',
-                href: requirejs.toUrl('./css/font-awesome.min.css')
-            })
-            .appendTo('head');
-      };
+      // var initialize = function () {
+      //   // == Add any relative css to the page ==
+      //   // Add Font Awesome 4.7 Icons:
+      //   $('<link/>')
+      //       .attr({
+      //           rel: 'stylesheet',
+      //           type: 'text/css',
+      //           href: requirejs.toUrl('./css/font-awesome.min.css')
+      //       })
+      //       .appendTo('head');
+      // };
 
-      // This function is called when a notebook is started.
-      function load_ipython_extension() {
 
-        // Load any libraries.
-        $('<script></script>')
-            .attr({
-                charset: "utf-8",
-                src: requirejs.toUrl('./libs/spectrum.min.js')
-            })
-            .appendTo('head');
-        $('<link>')
-            .attr({
-                rel: 'stylesheet',
-                type: 'text/css',
-                href: requirejs.toUrl('./libs/spectrum.min.css')
-            })
-            .appendTo('head');
+      function initialize() {
+        console.log("Loaded spectrum.js");
 
         // events.on('execute.CodeCell', function(evt, data) {
         //     var cell = data.cell;
@@ -433,12 +422,30 @@ class NotateArray(np.ndarray):
             attachCanvasEventHandlers(data["cell"]);
         });
 
+      }
 
-        // Add a default cell if there are no cells
-        // if (Jupyter.notebook.get_cells().length===1){
-        //   add_cell();
-        // }
-        // defaultCellButton();
+      // Wait until something is loaded
+      // function defer(check, cb) {
+      //     if (check()) {
+      //         cb();
+      //     } else {
+      //         setTimeout(function() { defer(check, cb); }, 50);
+      //     }
+      // }
+
+      // This function is called when a notebook is started.
+      function load_ipython_extension() {
+
+        // Load Spectrum JS color selector library CSS file.
+        $('<link>')
+            .attr({
+                rel: 'stylesheet',
+                type: 'text/css',
+                href: requirejs.toUrl('./libs/spectrum.min.css')
+            })
+            .appendTo('head');
+
+        initialize();
       }
 
       return {
