@@ -809,7 +809,7 @@ class NotateCanvas {
 
                     // Exit modal popover when clicking/touching off the canvas:
                     bg.addEventListener('pointerdown', function(e) {
-                        if (e.pointerType === "pen") return;
+                        //if (e.pointerType === "pen") return;
 
                         // Transfer strokes back to the parent canvas:
                         this.strokes = notate_clone.strokes;
@@ -832,15 +832,18 @@ class NotateCanvas {
                         // this.draw();
                     }.bind(this));
                     bg.addEventListener('pointerenter', function(e) {
-                        if (e.pointerType === "pen") return;
+                        //if (e.pointerType === "pen") return;
 
                         notate_clone.canvas.style.opacity = 0.5;
 
                     }.bind(this));
                     bg.addEventListener('pointerleave', function(e) {
-                        if (e.pointerType === "pen") return;
+                        //if (e.pointerType === "pen") return;
 
-                        notate_clone.canvas.style.opacity = 1.0;
+                        // For some reason the canvas element doesn't redraw on some platforms if opacity is set to 1.0.
+                        // So I first set it to 0.99 to force the DOM redraw.
+                        notate_clone.canvas.style.opacity = 0.99;
+                        // notate_clone.canvas.style.opacity = 1.0;
 
                     }.bind(this));
                 }
