@@ -1,5 +1,5 @@
 // Notate: Jupyter Notebook Extension for writing/drawing inside an iPython notebook.
-// Copyright (C) 2021 Ian Arawjo
+// Copyright (C) 2021-2022 Ian Arawjo
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License v3 as published by
@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU Lesser General Public License v3
 // along with this program.  If not, see <https://www.gnu.org/licenses/lgpl-3.0.en.html>.
-
 
 
 define([
@@ -492,13 +491,15 @@ class NotateCanvas {
         c.pen_weight = this.pen_weight;
         c.pen_color = this.pen_color;
         c.clear();
-        c.loadFromDataURL(this.toDataURL());
+        c.loadFromDataURL(this.toDataURL(), true, true);
         return c;
     }
     constructor(canvas_element) {
         this.strokes = [];
         this.idx = null; // undefined
         this.cell = null;
+        this.stateStack = [];
+        this.stateIdx = -1;
         this.canvas = canvas_element;
         this.ctx = this.canvas.getContext('2d', {
             desynchronized: false
@@ -660,25 +661,40 @@ class NotateCanvas {
                     bg.style.top = "0px";
                     bg.style.zIndex = "5";
                     bg.style.display = "block";
-                    bg.style.opacity = 0.8;
+                    bg.style.opacity = 0.4;
                     site.appendChild(bg);
 
-                    // The cloned DOM canvas:
+                    // Div wrapper over the DOM canvas:
                     let bounds = this.canvas.getBoundingClientRect();
-                    let clone = this.canvas.cloneNode(false);
                     const margin = 100;
                     const scaleX = Math.min((site_bounds.width - margin*2) / bounds.width, (site_bounds.height - 110 - margin*2) / bounds.height);
-                    clone.style.position = "absolute";
-                    clone.style.display = "block";
-                    clone.style.left = (site_bounds.width/2 - bounds.width/2) + "px";
-                    clone.style.top  = (site_bounds.height/2 - bounds.height/2) + "px";
-                    clone.style.width = bounds.width + "px";
-                    clone.style.height = bounds.height + "px";
+                    let canvas_wrapper = document.createElement('div');
+                    canvas_wrapper.style.position = "absolute";
+                    canvas_wrapper.style.display = "block";
+                    canvas_wrapper.style.margin = "0";
+                    canvas_wrapper.style.padding = "0";
+                    canvas_wrapper.style.left = (site_bounds.width/2 - bounds.width/2*scaleX) + "px";
+                    canvas_wrapper.style.top  = (site_bounds.height/2 - bounds.height/2*scaleX) + "px";
+                    canvas_wrapper.style.width = Math.floor(bounds.width*scaleX) + "px";
+                    canvas_wrapper.style.height = Math.floor(bounds.height*scaleX) + "px";
+                    canvas_wrapper.style.zIndex = "6";
+                    site.append(canvas_wrapper);
+
+                    // The cloned DOM canvas:
+                    let clone = this.canvas.cloneNode(false);
                     clone.style.backgroundColor = "#fff";
-                    clone.style.zIndex = "6";
+                    clone.style.position = "inherit";
+                    clone.style.display = "block";
+                    clone.style.margin = "0";
+                    // clone.style.zIndex = "6";
+                    clone.style.left = -(bounds.width)/2 + Math.floor(bounds.width*scaleX)/2 + "px";
+                    clone.style.top  = -(bounds.height)/2 + Math.floor(bounds.height*scaleX)/2 + "px";
+                    clone.style.width = Math.floor(bounds.width) + "px";
+                    clone.style.height = Math.floor(bounds.height) + "px";
                     clone.style.transform = "scale(" + scaleX + "," + scaleX + ")";
                     clone.style.border = "none";
-                    site.appendChild(clone);
+                    clone.style.cursor = "crosshair";
+                    canvas_wrapper.appendChild(clone);
                     // clone.style.transition = "transform 1000ms cubic-bezier(0.165, 0.84, 0.44, 1)";
 
                     // Add pen-based draw capabilities to canvas w/ draw library code:
@@ -690,60 +706,143 @@ class NotateCanvas {
                     notate_clone.setPenColor(this.pen_color);
                     notate_clone.idx = this.idx;
                     notate_clone.cell = this.cell;
-                    notate_clone.clear();
-                    // notate_clone.draw();
-                    notate_clone.loadFromDataURL(this.toDataURL());
+                    notate_clone.loadFromDataURL(this.toDataURL(), true, true);
 
-                    // A Trash icon
-                    // let trash_container = document.createElement('div');
-                    function createIcon(fontAwesomeIconName) {
-                        let i = document.createElement('i');
-                        i.style.position = "absolute";
-                        i.style.display = "block";
-                        i.classList.add("fa")
-                        i.classList.add("fa-"+fontAwesomeIconName);
-                        i.classList.add("fa-2x");
-                        // trash_container.style.left = (site_bounds.width/2 - bounds.width/2) + "px";
-                        // trash_container.style.top  = (site_bounds.height/2 - bounds.height/2) + "px";
-                        // trash_container.appendChild(trash_icon);
-                        i.style.zIndex = "7";
-                        i.style.opacity = 0.4;
-                        i.is_toggled = false; // Special flag
-                        return i;
+                    let cursorsvg = document.createElementNS("http://www.w3.org/2000/svg", 'svg'); //Create a path in SVG's namespace
+                    cursorsvg.style.position = "absolute";
+                    cursorsvg.style.display = "block";
+                    cursorsvg.style.pointerEvents = "none";
+                    cursorsvg.setAttribute("width", "32px");
+                    cursorsvg.setAttribute("height", "32px");
+                    cursorsvg.setAttribute("viewBox", "0 0 32 32");
+                    cursorsvg.style.zIndex = "4";
+                    cursorsvg.innerHTML += '<circle cx="15" cy="15" r="4" stroke="black" fill="black" stroke-width="0"></circle>';
+                    canvas_wrapper.appendChild(cursorsvg);
+
+                    canvas_wrapper.addEventListener('pointermove', function(e) {
+                        cursorsvg.style.left = e.offsetX*scaleX - 16;
+                        cursorsvg.style.top = e.offsetY*scaleX - 16;
+                    });
+                    canvas_wrapper.addEventListener('pointerenter', function(e) {
+                        cursorsvg.style.display = "inline";
+                    });
+                    canvas_wrapper.addEventListener('pointerleave', function(e) {
+                        cursorsvg.style.display = "none";
+                    });
+
+                    // canvas_wrapper.innerHTML += '<svg height="30" width="30" style="position:absolute;z-index:7"></svg>';
+
+                    // Toolbar icons
+                    // == Toolbar button helper functions ==
+                    function createIcon(fontAwesomeIconName, tooltip, innerAdj) {
+                        let iconbg = document.createElement('div');
+                        iconbg.style.position = "absolute";
+                        iconbg.style.display = "block";
+                        iconbg.style.width = "32px";
+                        iconbg.style.height = "32px";
+                        iconbg.style.zIndex = "7";
+                        iconbg.style.backgroundColor = "#eee";
+                        iconbg.title = tooltip;
+
+                        // There isn't actually an icon in FontAwesome that represents
+                        // a line, so we manually create it w/ an SVG element:
+                        if (fontAwesomeIconName == 'line') {
+                            let svg = document.createElementNS("http://www.w3.org/2000/svg", 'svg'); //Create a path in SVG's namespace
+                            svg.style.position = "relative";
+                            svg.style.display = "block";
+                            svg.setAttribute("width", "32px");
+                            svg.setAttribute("height", "32px");
+                            svg.setAttribute("viewBox", "0 0 32 32");
+                            svg.style.zIndex = "8";
+
+                            let path = document.createElement('path');
+                            path.setAttribute("d","M 5 27 L 27 5"); //Set path's data
+                            path.setAttribute("stroke", "black"); //Set stroke colour
+                            path.setAttribute("stroke-width", "2"); //Set stroke width
+                            svg.appendChild(path);
+
+                            iconbg.appendChild(svg);
+
+                            // Force a draw of the SVG element. See: https://stackoverflow.com/a/56923928
+                            svg.innerHTML += "";
+
+                        } else {
+                            let i = document.createElement('i');
+                            i.style.position = "relative";
+                            i.style.display = "block";
+                            i.classList.add("fa")
+                            i.classList.add("fa-"+fontAwesomeIconName);
+                            i.classList.add("fa-2x");
+                            i.style.zIndex = "8";
+                            i.style.left = innerAdj[0];
+                            i.style.top = innerAdj[1];
+                            iconbg.appendChild(i);
+                        }
+
+                        iconbg.is_toggled = false; // Special flag
+                        return iconbg;
                     }
                     function attachEvents(i, onClickCb) {
                         i.addEventListener('pointerdown', function(e) {
-                            this.style.cursor = 'default';
-                            this.style.opacity = 0.7;
                             onClickCb();
                         }.bind(i));
                         i.addEventListener('pointermove', function(e) {
                             if (e.pointerType !== "touch")
                                 this.style.cursor = 'pointer';
-                            this.style.opacity = 1.0;
+                            if (!this.is_toggled) {
+                                this.style.color = "white";
+                                this.style.backgroundColor = "#aae";
+                            } else {
+                                this.style.color = "#aae";
+                            }
                         }.bind(i));
                         i.addEventListener('pointerleave', function(e) {
                             if (e.pointerType !== "touch")
                                 this.style.cursor = 'default';
-                            if (!this.is_toggled)
-                                this.style.opacity = 0.4;
+                            if (!this.is_toggled) {
+                                this.style.color = "#000";
+                                this.style.backgroundColor = "#eee";
+                            } else {
+                                this.style.color = "#33a";
+                            }
                         }.bind(i));
                         return i;
                     }
-                    let trash_icon, erase_icon, pen_icon;
-                    let leftedge = (site_bounds.width/2 - bounds.width/2*scaleX);
-                    let topedge = site_bounds.height/2 - bounds.height/2*scaleX
-                    pen_icon = createIcon("pencil");
-                    pen_icon.style.left = (leftedge - 40) + "px";
-                    pen_icon.style.top  = (topedge + 20) + "px";
-                    erase_icon = createIcon("eraser");
-                    erase_icon.style.left = (leftedge - 40) + "px";
-                    erase_icon.style.top  = (topedge + 100) + "px";
-                    trash_icon = createIcon("trash");
-                    trash_icon.style.left = (leftedge - 40) + "px";
-                    trash_icon.style.top  = (topedge + 140) + "px";
-                    pen_icon.style.opacity = 0.8;
-                    pen_icon.is_toggled = true;
+                    function toggleIcon(icon, allIcons) {
+                        icon.style.backgroundColor = "#88e";
+                        icon.style.color = "#33a";
+                        icon.is_toggled = true;
+                        allIcons.forEach((item, i) => {
+                            if (item == icon) return;
+                            item.style.backgroundColor = "#eee";
+                            item.style.color = "#000";
+                            item.is_toggled = false;
+                        });
+                    }
+
+                    // Toolbar button specification
+                    let tool_btns_specs = [
+                        ['pencil', "Freeform draw", ["4px", "3px"]],
+                        ['square-o', "Rectangle tool", ["6px", "4px"]],
+                        ['circle-thin', "Circle tool", ["5px", "3px"]],
+                        ['line', "Line tool", ["2px", "3px"]],
+                        ['eraser', "Erase", ["2px", "3px"]],
+                        ['undo', "Undo", ["4px", "3px"]],
+                        ['repeat', "Redo", ["4px", "3px"]],
+                        ['trash', "Clear canvas", ["4px", "3px"]]
+                    ];
+                    // Generate DIV elements for toolbar based on spec
+                    const leftedge = site_bounds.width/2 - bounds.width/2*scaleX;
+                    const topedge = site_bounds.height/2 - bounds.height/2*scaleX;
+                    let tool_btns = tool_btns_specs.map(function(item, i) {
+                        let icon = createIcon(item[0], item[1], item[2]);
+                        icon.style.left = (leftedge - 40) + "px";
+                        icon.style.top = (topedge + 20 + 40*i) + "px";
+                        return icon;
+                    });
+
+                    // Toggle the pencil icon on by default:
+                    toggleIcon(tool_btns[0], tool_btns);
 
                     // Spectrum.js library color picker
                     let color_picker = $('<input id="color-picker" value="' + this.getPenColor() + '" />');
@@ -769,25 +868,46 @@ class NotateCanvas {
                       evt.stopPropagation();
                     });
 
-                    attachEvents(trash_icon, function() {
-                        notate_clone.strokes = [];
-                        notate_clone.clear();
-                    });
-                    attachEvents(erase_icon, function() {
-                        notate_clone.setPenColor('erase'); // erase is a special setting
-                        notate_clone.setPenWeight(5);
-                        erase_icon.style.opacity = 0.8;
-                        erase_icon.is_toggled = true;
-                        pen_icon.style.opacity = 0.4;
-                        pen_icon.is_toggled = false;
-                    });
-                    attachEvents(pen_icon, function() {
+                    attachEvents(tool_btns[0], function() { // Pencil
                         notate_clone.setPenColor('#000');
                         notate_clone.setPenWeight(2);
-                        pen_icon.style.opacity = 0.8;
-                        pen_icon.is_toggled = true;
-                        erase_icon.style.opacity = 0.4;
-                        erase_icon.is_toggled = false;
+                        cursorsvg.firstChild.setAttribute("r", "4");
+                        cursorsvg.firstChild.setAttribute("stroke-width", "0");
+                        cursorsvg.firstChild.setAttribute("fill", "black");
+                        toggleIcon(tool_btns[0], tool_btns);
+                    });
+                    attachEvents(tool_btns[1], function() { // Rectangle tool
+                        toggleIcon(tool_btns[1], tool_btns);
+                    });
+                    attachEvents(tool_btns[2], function() { // Circle tool
+                        toggleIcon(tool_btns[2], tool_btns);
+                    });
+                    attachEvents(tool_btns[3], function() { // Line tool
+                        toggleIcon(tool_btns[3], tool_btns);
+                    });
+                    attachEvents(tool_btns[4], function() { // Eraser
+                        notate_clone.setPenColor('erase'); // erase is a special setting
+                        notate_clone.setPenWeight(5);
+                        cursorsvg.firstChild.setAttribute("r", "5");
+                        cursorsvg.firstChild.setAttribute("stroke-width", "1");
+                        cursorsvg.firstChild.setAttribute("fill", "none");
+                        toggleIcon(tool_btns[4], tool_btns);
+                    });
+                    attachEvents(tool_btns[5], function() { // Undo
+                        // UNDO --SPECIAL CODE HERE
+                        notate_clone.revertState();
+                        // if (notate_clone.stateIdx <= 0) {
+                        //     tool_btns[5].style.color = "gray";
+                        //     tool_btns[5].disabled = true;
+                        // }
+                    });
+                    attachEvents(tool_btns[6], function() { // Redo
+                        // REDO --SPECIAL CODE HERE
+                        notate_clone.advanceState();
+                    });
+                    attachEvents(tool_btns[7], function() { // Trash
+                        notate_clone.strokes = [];
+                        notate_clone.clear();
                     });
 
                     // Background for toolbar
@@ -795,17 +915,17 @@ class NotateCanvas {
                     bg_toolbar.style.position = "absolute";
                     bg_toolbar.style.display = "block";
                     bg_toolbar.style.width = "48px";
-                    bg_toolbar.style.height = "168px";
+                    bg_toolbar.style.height = (18 + 40*tool_btns.length) + "px";
                     bg_toolbar.style.borderRadius = "8px 0px 0px 8px";
-                    bg_toolbar.style.backgroundColor = "#ccc";
+                    bg_toolbar.style.backgroundColor = "#eee";
                     bg_toolbar.style.zIndex = "6";
                     bg_toolbar.style.left = (leftedge - 48) + "px";
                     bg_toolbar.style.top = (topedge + 8) + "px";
 
                     site.appendChild(bg_toolbar);
-                    site.appendChild(trash_icon);
-                    site.appendChild(erase_icon);
-                    site.appendChild(pen_icon);
+                    tool_btns.forEach((icon, i) => {
+                        site.appendChild(icon);
+                    });
 
                     // Exit modal popover when clicking/touching off the canvas:
                     bg.addEventListener('pointerdown', function(e) {
@@ -817,13 +937,14 @@ class NotateCanvas {
 
                         // Remove modal elements:
                         site.removeChild(bg);
-                        site.removeChild(clone);
+                        canvas_wrapper.removeChild(clone);
+                        site.removeChild(canvas_wrapper);
                         site.removeChild(bg_toolbar);
                         $(color_picker).spectrum("destroy");
                         color_picker.remove();
-                        site.removeChild(trash_icon);
-                        site.removeChild(erase_icon);
-                        site.removeChild(pen_icon);
+                        tool_btns.forEach((icon, i) => {
+                            site.removeChild(icon);
+                        });
                         NotateCanvasManager.remove(notate_clone);
 
                         // Update parent canvas:
@@ -835,6 +956,8 @@ class NotateCanvas {
                         //if (e.pointerType === "pen") return;
 
                         notate_clone.canvas.style.opacity = 0.5;
+                        bg.style.opacity = 0.2;
+                        cursorsvg.style.display = "none";
 
                     }.bind(this));
                     bg.addEventListener('pointerleave', function(e) {
@@ -843,6 +966,8 @@ class NotateCanvas {
                         // For some reason the canvas element doesn't redraw on some platforms if opacity is set to 1.0.
                         // So I first set it to 0.99 to force the DOM redraw.
                         notate_clone.canvas.style.opacity = 0.99;
+                        bg.style.opacity = 0.4;
+                        cursorsvg.style.display = "inline";
                         // notate_clone.canvas.style.opacity = 1.0;
 
                     }.bind(this));
@@ -861,6 +986,9 @@ class NotateCanvas {
                 // Move stroke into the main strokes array:
                 this.strokes.push( this.new_strokes[e.pointerId] );
                 delete this.new_strokes[e.pointerId];
+
+                // Push canvas state onto undo stack
+                this.pushState();
 
                 // Save img contents of canvas to Jupyter cell metadata
                 this.saveMetadataToCell();
@@ -903,7 +1031,7 @@ class NotateCanvas {
         this.clear();
         canvas.getContext("2d").drawImage(img, 0, 0);
     }
-    loadFromDataURL(dataURL, changeSize=true) {
+    loadFromDataURL(dataURL, changeSize=true, pushState=false) {
         let img = new Image();
         let canvas = this.canvas;
         img.addEventListener("load", function () {
@@ -915,6 +1043,8 @@ class NotateCanvas {
             }
             canvas.getContext("2d").drawImage(img, 0, 0);
         });
+        if (pushState)
+            this.pushState(dataURL);
         img.setAttribute("src", dataURL);
     }
     toImage() {
@@ -997,6 +1127,9 @@ class NotateCanvas {
     }
     clear() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Push the cleared state onto the undo stack
+        this.pushState();
         // if (this.bg_color) { // Draw background if set.
         //     const gl_a = this.ctx.globalAlpha;
         //     if (this.bg_opacity < 1.0) this.ctx.globalAlpha = this.bg_opacity;
@@ -1005,6 +1138,38 @@ class NotateCanvas {
         //     if (this.bg_opacity < 1.0) this.ctx.globalAlpha = gl_a;
         // }
     }
+
+    // Undo / redo stack
+    pushState(dataURL=null) {
+        // Chop states after the previous index:
+        if (this.stateIdx < this.stateStack.length-1)
+            this.stateStack.splice(this.stateIdx+1);
+        // Push the current canvas state to the undo stack,
+        // and set the index to the end of the stack:
+        let url = dataURL ? dataURL : this.toDataURL();
+        this.stateStack.push(url);
+        this.stateIdx = this.stateStack.length-1;
+    }
+    advanceState() {
+        // Check if the stack exists, and we can advance:
+        if (this.stateStack.length === 0 || this.stateIdx >= this.stateStack.length-1)
+            return;
+
+        // Advance forward one state
+        this.stateIdx += 1;
+        this.loadFromDataURL(this.stateStack[this.stateIdx]);
+    }
+    revertState() {
+        // Check if the stack exists:
+        if (this.stateStack.length === 0 || this.stateIdx <= 0)
+            return;
+
+        // Revert back one state, while leaving the
+        // stateStack untouched in case the user presses Redo:
+        this.stateIdx -= 1;
+        this.loadFromDataURL(this.stateStack[this.stateIdx]);
+    }
+
     draw() {
         this.strokes.forEach(this.drawStroke.bind(this));
     }
