@@ -524,6 +524,7 @@ class NotateCanvas {
         this.resizing = false;
         this.pointer_down = false;
         this.pointer_moved = false;
+        this.disable_drawing = false;
 
         this.new_strokes = {};
 
@@ -553,6 +554,9 @@ class NotateCanvas {
                 return;
             }
 
+            // Skip if drawing is disabled
+            if (this.disable_drawing) return;
+
             // Create new stroke and attach reference
             let s = { pts: [this.getPointerValue(e)], weight:this.pen_weight, color:this.pen_color };
             this.new_strokes[e.pointerId] = s;
@@ -560,6 +564,9 @@ class NotateCanvas {
             this.drawStroke(s);
         }.bind(this);
         let pointerMove = function pointerMove(e) {
+            // Skip if drawing is disabled
+            if (this.disable_drawing) return;
+
             let pos = this.getPointerValue(e);
             this.pointer_moved = true;
 
@@ -638,6 +645,9 @@ class NotateCanvas {
                 this.canvas.style.border = default_border;
         }.bind(this);
         let pointerUp = function pointerUp(e) {
+            // Skip if drawing is disabled
+            if (this.disable_drawing) return;
+
             if (this.pointer_down) {
                 if (this.resizing !== false) { // End of resizing canvas operation.
                     if (this.pointer_moved) {
@@ -717,11 +727,65 @@ class NotateCanvas {
                     cursorsvg.setAttribute("viewBox", "0 0 32 32");
                     cursorsvg.style.zIndex = "4";
                     cursorsvg.innerHTML += '<circle cx="15" cy="15" r="4" stroke="black" fill="black" stroke-width="0"></circle>';
+                    cursorsvg.drag_resize = false; // special attribute when drawing elements like a rect and circle
+                    cursorsvg.drag_start = null;
+                    cursorsvg.offset = {x:-16, y:-16};
                     canvas_wrapper.appendChild(cursorsvg);
 
+                    const div_to_canvas_coord = function(p) {
+                        // return {x: (p.x - notate_clone.pos.x) / notate_clone.resolution, y: (p.y - notate_clone.pos.y) / notate_clone.resolution };
+                        return { x: p.x/scaleX*2, y: p.y/scaleX*2 };
+                    };
+
+                    // Pointer events for the invisible div that wraps the canvas:
+                    // this handles changing and moving the overlay svg
+                    canvas_wrapper.addEventListener('pointerdown', function(e) {
+                        if (cursorsvg.drag_resize) {
+                            cursorsvg.drag_start = { x: Math.floor(e.offsetX*scaleX) + cursorsvg.offset.x, y: Math.floor(e.offsetY*scaleX) + cursorsvg.offset.y };
+                            cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
+                            cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
+                        }
+                    });
                     canvas_wrapper.addEventListener('pointermove', function(e) {
-                        cursorsvg.style.left = e.offsetX*scaleX - 16;
-                        cursorsvg.style.top = e.offsetY*scaleX - 16;
+                        if (cursorsvg.drag_resize && cursorsvg.drag_start) {
+                            // Resize svg to fit box made from start point to end point:
+                            let w = Math.abs(Math.floor(e.offsetX*scaleX - cursorsvg.drag_start.x));
+                            let h = Math.abs(Math.floor(e.offsetY*scaleX - cursorsvg.drag_start.y));
+                            cursorsvg.setAttribute("width", w + "px");
+                            cursorsvg.setAttribute("height", h + "px");
+                            cursorsvg.setAttribute("viewBox", "0 0 " + w + " " + h);
+                            // cursorsvg.firstChild.setAttribute("width", w + "px");
+                            // cursorsvg.firstChild.setAttribute("height", h + "px");
+                            cursorsvg.innerHTML += "";
+                            // cursorsvg.drag_end = [e.offsetX*scaleX, e.offsetY*scaleX];
+                        } else {
+                            cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
+                            cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
+                        }
+                    });
+                    canvas_wrapper.addEventListener('pointerup', function(e) {
+                        if (cursorsvg.drag_resize && cursorsvg.drag_start) {
+                            // Commit the dragged box to canvas:
+                            const topleft  = div_to_canvas_coord(cursorsvg.drag_start);
+                            const topright = div_to_canvas_coord({x: e.offsetX*scaleX, y: cursorsvg.drag_start.y });
+                            const botleft  = div_to_canvas_coord({x: cursorsvg.drag_start.x, y: e.offsetY*scaleX });
+                            const botright = div_to_canvas_coord({x: e.offsetX*scaleX, y: e.offsetY*scaleX });
+                            let stroke = { pts: [topleft, topright, botright, botleft, topleft],
+                                        weight:4,
+                                         color:notate_clone.pen_color };
+                            if (notate_clone.stateStack.length === 0)
+                                notate_clone.pushState();
+                            notate_clone.drawStroke(stroke);
+                            notate_clone.pushState();
+
+                            // Reset the dragging box
+                            cursorsvg.drag_start = null;
+                            cursorsvg.setAttribute("width", "16px");
+                            cursorsvg.setAttribute("height", "16px");
+                            cursorsvg.setAttribute("viewBox", "0 0 16 16");
+                            cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
+                            cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
+                        }
                     });
                     canvas_wrapper.addEventListener('pointerenter', function(e) {
                         cursorsvg.style.display = "inline";
@@ -868,15 +932,28 @@ class NotateCanvas {
                       evt.stopPropagation();
                     });
 
+                    // Event handlers for toggling toolbar buttons
                     attachEvents(tool_btns[0], function() { // Pencil
                         notate_clone.setPenColor('#000');
                         notate_clone.setPenWeight(2);
-                        cursorsvg.firstChild.setAttribute("r", "4");
-                        cursorsvg.firstChild.setAttribute("stroke-width", "0");
-                        cursorsvg.firstChild.setAttribute("fill", "black");
+                        notate_clone.disable_drawing = false;
+                        cursorsvg.setAttribute("width", "32px");
+                        cursorsvg.setAttribute("height", "32px");
+                        cursorsvg.setAttribute("viewBox", "0 0 32 32");
+                        cursorsvg.style.zIndex = "4";
+                        cursorsvg.offset = {x: -16, y: -16};
+                        cursorsvg.innerHTML = '<circle cx="15" cy="15" r="4" stroke="black" fill="black" stroke-width="0"></circle>';
+                        cursorsvg.drag_resize = false;
                         toggleIcon(tool_btns[0], tool_btns);
                     });
                     attachEvents(tool_btns[1], function() { // Rectangle tool
+                        notate_clone.disable_drawing = true; // disable direct pen drawing mode
+                        cursorsvg.setAttribute("width", "16px");
+                        cursorsvg.setAttribute("height", "16px");
+                        cursorsvg.setAttribute("viewBox", "0 0 16 16");
+                        cursorsvg.offset = {x: 0, y: 0};
+                        cursorsvg.innerHTML = '<rect width="100%" height="100%" stroke="black" opacity="0.7" fill="none" stroke-width="4px"></rect>';
+                        cursorsvg.drag_resize = true;
                         toggleIcon(tool_btns[1], tool_btns);
                     });
                     attachEvents(tool_btns[2], function() { // Circle tool
@@ -1170,6 +1247,7 @@ class NotateCanvas {
         this.loadFromDataURL(this.stateStack[this.stateIdx]);
     }
 
+    // Drawing to the canvas
     draw() {
         this.strokes.forEach(this.drawStroke.bind(this));
     }
