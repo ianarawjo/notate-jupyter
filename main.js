@@ -734,8 +734,7 @@ class NotateCanvas {
                     canvas_wrapper.appendChild(cursorsvg);
 
                     const div_to_canvas_coord = function(p) {
-                        // return {x: (p.x - notate_clone.pos.x) / notate_clone.resolution, y: (p.y - notate_clone.pos.y) / notate_clone.resolution };
-                        return { x: p.x/scaleX*2, y: p.y/scaleX*2 };
+                        return { x: p.x/scaleX*2, y: p.y/scaleX*2 }; // notate_clone.resolution
                     };
 
                     // Pointer events for the invisible div that wraps the canvas:
@@ -750,11 +749,36 @@ class NotateCanvas {
                     canvas_wrapper.addEventListener('pointermove', function(e) {
                         if (cursorsvg.drag_resize && cursorsvg.drag_start) {
                             // Resize svg to fit box made from start point to end point:
-                            let w = Math.abs(Math.floor(e.offsetX*scaleX - cursorsvg.drag_start.x));
-                            let h = Math.abs(Math.floor(e.offsetY*scaleX - cursorsvg.drag_start.y));
-                            cursorsvg.setAttribute("width", w + "px");
-                            cursorsvg.setAttribute("height", h + "px");
-                            cursorsvg.setAttribute("viewBox", "0 0 " + w + " " + h);
+                            const shape = cursorsvg.firstChild.tagName;
+                            let w = e.offsetX*scaleX - cursorsvg.drag_start.x;
+                            let h = e.offsetY*scaleX - cursorsvg.drag_start.y;
+                            cursorsvg.setAttribute("width", Math.max(3,Math.abs(w)) + "px");
+                            cursorsvg.setAttribute("height", Math.max(3,Math.abs(h)) + "px");
+                            if (w < 0) cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
+                            else       cursorsvg.style.left = cursorsvg.drag_start.x;
+                            if (h < 0) cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
+                            else       cursorsvg.style.top = cursorsvg.drag_start.y;
+                            cursorsvg.setAttribute("viewBox", "0 0 " + Math.max(3,Math.abs(w)) + " " + Math.max(3,Math.abs(h)));
+
+                            if (shape == 'line') {
+                                if (h < 0 && w >= 0) {
+                                    cursorsvg.firstChild.setAttribute('y1', "100%");
+                                    cursorsvg.firstChild.setAttribute('y2', "0");
+                                    cursorsvg.firstChild.setAttribute('x1', "0");
+                                    cursorsvg.firstChild.setAttribute('x2', "100%");
+                                } else if (h >= 0 && w < 0) {
+                                    cursorsvg.firstChild.setAttribute('x1', "100%");
+                                    cursorsvg.firstChild.setAttribute('x2', "0");
+                                    cursorsvg.firstChild.setAttribute('y1', "0");
+                                    cursorsvg.firstChild.setAttribute('y2', "100%");
+                                } else {
+                                    cursorsvg.firstChild.setAttribute('x1', "0");
+                                    cursorsvg.firstChild.setAttribute('x2', "100%");
+                                    cursorsvg.firstChild.setAttribute('y1', "0");
+                                    cursorsvg.firstChild.setAttribute('y2', "100%");
+                                }
+                            }
+
                             // cursorsvg.firstChild.setAttribute("width", w + "px");
                             // cursorsvg.firstChild.setAttribute("height", h + "px");
                             cursorsvg.innerHTML += "";
@@ -766,20 +790,46 @@ class NotateCanvas {
                     });
                     canvas_wrapper.addEventListener('pointerup', function(e) {
                         if (cursorsvg.drag_resize && cursorsvg.drag_start) {
-                            // Commit the dragged box to canvas:
-                            const topleft  = div_to_canvas_coord(cursorsvg.drag_start);
-                            const topright = div_to_canvas_coord({x: e.offsetX*scaleX, y: cursorsvg.drag_start.y });
-                            const botleft  = div_to_canvas_coord({x: cursorsvg.drag_start.x, y: e.offsetY*scaleX });
-                            const botright = div_to_canvas_coord({x: e.offsetX*scaleX, y: e.offsetY*scaleX });
-                            let stroke = { pts: [topleft, topright, botright, botleft, topleft],
-                                        weight:4,
-                                         color:notate_clone.pen_color };
+                            // Commit the dragged shape to canvas:
+                            // 1. Generate strokes that match the dragged shape
+                            let stroke;
+                            const shape = cursorsvg.firstChild.tagName;
+                            if (shape == 'rect') { // Rectangle
+                                const topleft  = div_to_canvas_coord(cursorsvg.drag_start);
+                                const topright = div_to_canvas_coord({x: e.offsetX*scaleX, y: cursorsvg.drag_start.y });
+                                const botleft  = div_to_canvas_coord({x: cursorsvg.drag_start.x, y: e.offsetY*scaleX });
+                                const botright = div_to_canvas_coord({x: e.offsetX*scaleX, y: e.offsetY*scaleX });
+                                stroke     = { pts: [topleft, topright, botright, botleft, topleft],
+                                            weight:4,
+                                             color:notate_clone.pen_color };
+                            } else if (shape == 'ellipse') { // Circle (ellipse)
+                                const weight = 4;
+                                const w = e.offsetX*scaleX - cursorsvg.drag_start.x - weight;
+                                const h = e.offsetY*scaleX - cursorsvg.drag_start.y - weight;
+                                const center = { x:(e.offsetX*scaleX+cursorsvg.drag_start.x)/2,
+                                                 y:(e.offsetY*scaleX+cursorsvg.drag_start.y)/2 };
+                                const segs = 32.0;
+                                const pi2 = Math.PI * 2;
+                                let pts = [];
+                                for (let i = 0; i <= segs; i++) { // Generate the points on a circle
+                                    pts.push( {x: center.x + w/2*Math.cos(i/segs*pi2),
+                                               y: center.y + h/2*Math.sin(i/segs*pi2) } );
+                                }
+                                stroke = { pts: pts.map(div_to_canvas_coord), weight: 4, color: notate_clone.pen_color };
+                            } else { // Line
+                                const endpt = {x: e.offsetX*scaleX, y: e.offsetY*scaleX};
+                                stroke = { pts: [div_to_canvas_coord(cursorsvg.drag_start), div_to_canvas_coord(endpt)],
+                                        weight: 4, color: notate_clone.pen_color};
+                                console.log(stroke.pts);
+                            }
+
+                            // 2. Commit the shape's strokes to canvas
                             if (notate_clone.stateStack.length === 0)
                                 notate_clone.pushState();
                             notate_clone.drawStroke(stroke);
                             notate_clone.pushState();
 
-                            // Reset the dragging box
+                            // 3. Reset the dragging box
                             cursorsvg.drag_start = null;
                             cursorsvg.setAttribute("width", "16px");
                             cursorsvg.setAttribute("height", "16px");
@@ -953,14 +1003,28 @@ class NotateCanvas {
                         cursorsvg.setAttribute("height", "16px");
                         cursorsvg.setAttribute("viewBox", "0 0 16 16");
                         cursorsvg.offset = {x: 0, y: 0};
-                        cursorsvg.innerHTML = '<rect width="100%" height="100%" stroke="black" opacity="0.7" fill="none" stroke-width="4px"></rect>';
+                        cursorsvg.innerHTML = '<rect width="100%" height="100%" stroke="black" opacity="0.6" fill="none" stroke-width="4px"></rect>';
                         cursorsvg.drag_resize = true;
                         toggleIcon(tool_btns[1], tool_btns);
                     });
                     attachEvents(tool_btns[2], function() { // Circle tool
+                        notate_clone.disable_drawing = true; // disable direct pen drawing mode
+                        cursorsvg.setAttribute("width", "16px");
+                        cursorsvg.setAttribute("height", "16px");
+                        cursorsvg.setAttribute("viewBox", "0 0 16 16");
+                        cursorsvg.offset = {x: 0, y: 0};
+                        cursorsvg.innerHTML = '<ellipse cx="50%" cy="50%" rx="49%" ry="49%" stroke="black" opacity="0.6" fill="none" stroke-width="2px"></ellipse>';
+                        cursorsvg.drag_resize = true;
                         toggleIcon(tool_btns[2], tool_btns);
                     });
                     attachEvents(tool_btns[3], function() { // Line tool
+                        notate_clone.disable_drawing = true; // disable direct pen drawing mode
+                        cursorsvg.setAttribute("width", "16px");
+                        cursorsvg.setAttribute("height", "16px");
+                        cursorsvg.setAttribute("viewBox", "0 0 16 16");
+                        cursorsvg.offset = {x: 0, y: 0};
+                        cursorsvg.innerHTML = '<line x1="0" y1="0" x2="100%" y2="100%" stroke="black" opacity="0.6" fill="none" stroke-width="4px"></line>';
+                        cursorsvg.drag_resize = true;
                         toggleIcon(tool_btns[3], tool_btns);
                     });
                     attachEvents(tool_btns[4], function() { // Eraser
