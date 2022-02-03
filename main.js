@@ -991,7 +991,6 @@ class NotateCanvas {
                         cursorsvg.setAttribute("width", "32px");
                         cursorsvg.setAttribute("height", "32px");
                         cursorsvg.setAttribute("viewBox", "0 0 32 32");
-                        cursorsvg.style.zIndex = "4";
                         cursorsvg.offset = {x: -16, y: -16};
                         cursorsvg.innerHTML = '<circle cx="15" cy="15" r="4" stroke="black" fill="black" stroke-width="0"></circle>';
                         cursorsvg.drag_resize = false;
@@ -1029,10 +1028,14 @@ class NotateCanvas {
                     });
                     attachEvents(tool_btns[4], function() { // Eraser
                         notate_clone.setPenColor('erase'); // erase is a special setting
-                        notate_clone.setPenWeight(5);
-                        cursorsvg.firstChild.setAttribute("r", "5");
-                        cursorsvg.firstChild.setAttribute("stroke-width", "1");
-                        cursorsvg.firstChild.setAttribute("fill", "none");
+                        notate_clone.setPenWeight(6);
+                        notate_clone.disable_drawing = false;
+                        cursorsvg.setAttribute("width", "32px");
+                        cursorsvg.setAttribute("height", "32px");
+                        cursorsvg.setAttribute("viewBox", "0 0 32 32");
+                        cursorsvg.offset = {x: -16, y: -16};
+                        cursorsvg.innerHTML = '<circle cx="15" cy="15" r="6" stroke="black" fill="none" stroke-width="1"></circle>';
+                        cursorsvg.drag_resize = false;
                         toggleIcon(tool_btns[4], tool_btns);
                     });
                     attachEvents(tool_btns[5], function() { // Undo
