@@ -714,6 +714,7 @@ class NotateCanvas {
                     cursorsvg.style.pointerEvents = "none";
                     cursorsvg.setAttribute("width", "32px");
                     cursorsvg.setAttribute("height", "32px");
+                    // cursorsvg.setAttribute("opacity", "0.5");
                     cursorsvg.setAttribute("viewBox", "0 0 32 32");
                     cursorsvg.style.zIndex = "4";
                     cursorsvg.innerHTML += '<circle cx="15" cy="15" r="4" stroke="black" fill="black" stroke-width="0"></circle>';
