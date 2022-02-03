@@ -1,17 +1,17 @@
 # Notate (Jupyter Notebook Extension)
 ### 1. Tear open HTML canvases and draw on them.
 Use Ctrl+\ (Backslash) to inject a canvas at the cursor position in the selected cell. Draw on it:
-![A handwritten sum equation.](sum_example.png)
+![A handwritten sum equation.](examples/images/sum_example.png)
 ### 2. Canvases are auto-passed to Python as 2d NumPy arrays (images) upon run.
 In-line, canvases act as variable names. On running the cell, silently injected code sets the variables equal to NumPy image data. (This performs a number of imports: base64, numpy as np, io.BytesIO, and PIL.Image. If you pass the image as a single argument to a function (e.g. foo(*canvas*)) it will also pass the locals() dict as an added '.locals' attribute of the nparray object.)
 ### 3. Do what you want with the output.
 Pass handwritten digits to an MNIST recognizer for all I care! Here's an example of a magical QCR function recognizing a handwritten quantum circuit (function not included):
 
-![A handwritten quantum circuit magically recognized.](qc_example.png)
+![A handwritten quantum circuit magically recognized.](examples/images/qc_example.png)
 
 And here's an obligatory MNIST example (see examples/ folder for more):
 
-![Passing canvases of numbers 1 2 3 through a Keras recognizer.](mnist_example.png)
+![Passing canvases of numbers 1 2 3 through a Keras recognizer.](examples/images/mnist_example.png)
 
 ### Extra features
 - You can copy+paste canvases like you would text.
