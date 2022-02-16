@@ -505,6 +505,7 @@ class NotateCanvas {
             desynchronized: false
         });
         this.ctx.imageSmoothingEnabled = true; // anti-aliasing
+        this.CHANGESIZE_DIALOG_ENABLED = false;
 
         const default_linewidth = 2;
         const default_color = '#000';
@@ -519,6 +520,32 @@ class NotateCanvas {
         this.bg_opacity = 0.4;
         this.default_linewidth = default_linewidth
 
+        // Resize parameters
+        this.default_resize_thresh = 20;
+        this.resize_thresh = 20;
+        this.default_resize_settings = Object.freeze({
+            'right': {
+                'cursor': 'col-resize',
+                'borderRight': '3px solid gray',
+                'borderBottom': hover_border
+            },
+            'bot': {
+                'cursor': 'row-resize',
+                'borderRight': hover_border,
+                'borderBottom': '3px solid gray'
+            },
+            'botright': {
+                'cursor': 'nwse-resize',
+                'borderRight': '3px solid gray',
+                'borderBottom': '3px solid gray'
+            },
+            'default': {
+                'border': hover_border,
+                'cursor': 'auto'
+            }
+        });
+        this.resize_settings = this.default_resize_settings;
+
         this.disable_resize = false;
         this.disable_expand = false;
         this.resizing = false;
@@ -532,11 +559,8 @@ class NotateCanvas {
         let pointerEnter = function pointerEnter(e) {
             let _this = this;
             if (!this.disable_expand)
-                this.canvas.style.border = hover_border;
-            this.saved_img = null;
-            this.toImage().then(function (img) {
-                _this.saved_img = img;
-            });
+                this.canvas.style.border = this.resize_settings.default.border;
+            this.saved_img = this.toDataURL();
         }.bind(this);
         let pointerDown = function pointerDown(e) {
             this.pointer_down = true;
@@ -583,7 +607,7 @@ class NotateCanvas {
             } else if (this.pointer_down && this.resizing) {
 
                 // Resize canvas from bottom-right corner:
-                const d = 20;
+                const d = this.resize_thresh;
                 if (this.resizing.includes('hor')) {
                     this.canvas.style.width = Math.floor(e.offsetX + d) + "px";
                     this.canvas.width = Math.floor(e.offsetX + d) * 2;
@@ -593,33 +617,35 @@ class NotateCanvas {
                     this.canvas.height = Math.floor(e.offsetY + d) * 2;
                 }
 
-                this.loadFromImage(this.saved_img, false);
+                const num_states = this.stateStack.length;
+                if (num_states > 0) this.loadFromDataURL(this.stateStack[num_states-1], false, false);
+                else                this.loadFromDataURL(this.saved_img, false);
 
             } else if (!this.disable_resize) {
                 // Bottom-right resize
-                const d = 20;
+                const d = this.resize_thresh;
                 if (pos.x >= this.canvas.width - d && pos.y >= this.canvas.height - d) {
-                    this.canvas.style.cursor = "nwse-resize";
-                    this.canvas.style.borderRight = "3px solid gray";
-                    this.canvas.style.borderBottom = "3px solid gray";
+                    this.canvas.style.cursor = this.resize_settings.botright.cursor;
+                    this.canvas.style.borderRight = this.resize_settings.botright.borderRight;
+                    this.canvas.style.borderBottom = this.resize_settings.botright.borderBottom;
                     this.resizing = "hor-vert";
                 }
                 else if (pos.x >= this.canvas.width - d) {
-                    this.canvas.style.cursor = "col-resize";
-                    this.canvas.style.borderRight = "3px solid gray";
-                    this.canvas.style.borderBottom = hover_border;
+                    this.canvas.style.cursor = this.resize_settings.right.cursor;
+                    this.canvas.style.borderRight = this.resize_settings.right.borderRight;
+                    this.canvas.style.borderBottom = this.resize_settings.right.borderBottom;
                     this.resizing = "hor";
                 }
                 else if (pos.y >= this.canvas.height - d) {
-                    this.canvas.style.cursor = "row-resize";
-                    this.canvas.style.borderBottom = "3px solid gray";
-                    this.canvas.style.borderRight = hover_border;
+                    this.canvas.style.cursor = this.resize_settings.bot.cursor;
+                    this.canvas.style.borderRight = this.resize_settings.bot.borderRight;
+                    this.canvas.style.borderBottom = this.resize_settings.bot.borderBottom;
                     this.resizing = "vert";
                 }
                 else {
-                    this.canvas.style.cursor = "auto";
+                    this.canvas.style.cursor = this.resize_settings.default.cursor;
                     // this.canvas.style.border = "thin solid #aaa";
-                    this.canvas.style.border = hover_border;
+                    this.canvas.style.border = this.resize_settings.default.border;
                     this.resizing = false;
                 }
             }
@@ -628,7 +654,7 @@ class NotateCanvas {
             if (this.pointer_down) {
                 if (this.resizing) {
                     // Continue to resize canvas from bottom-right corner:
-                    const d = 20;
+                    const d = this.resize_thresh;
                     if (this.resizing.includes('hor')) {
                         this.canvas.style.width = Math.floor(e.offsetX + d) + "px";
                         this.canvas.width = Math.floor(e.offsetX + d) * 2;
@@ -637,12 +663,16 @@ class NotateCanvas {
                         this.canvas.style.height = Math.floor(e.offsetY + d) + "px";
                         this.canvas.height = Math.floor(e.offsetY + d) * 2;
                     }
-                    this.loadFromImage(this.saved_img, false);
+
+                    const num_states = this.stateStack.length;
+                    if (num_states > 0) this.loadFromDataURL(this.stateStack[num_states-1], false, false);
+                    else                this.loadFromDataURL(this.saved_img, false);
+
                     e.preventDefault();
                 }
             }
             if (!this.disable_expand)
-                this.canvas.style.border = default_border;
+                this.canvas.style.border = this.resize_settings.default.border;
         }.bind(this);
         let pointerUp = function pointerUp(e) {
             // Skip if drawing is disabled
@@ -651,10 +681,16 @@ class NotateCanvas {
             if (this.pointer_down) {
                 if (this.resizing !== false) { // End of resizing canvas operation.
                     if (this.pointer_moved) {
-                        this.loadFromImage(this.saved_img, false);
+
+                        const num_states = this.stateStack.length;
+                        if (num_states > 0) this.loadFromDataURL(this.stateStack[num_states-1], false, false);
+                        else                this.loadFromDataURL(this.saved_img, false);
+
                         this.saveMetadataToCell(); // Save resized image to cell metadata
-                    } else // Open modal input asking for specific width/height pixel values
-                        this.openChangeSizeDialog();
+                    } else { // Open modal input asking for specific width/height pixel values
+                        if (this.CHANGESIZE_DIALOG_ENABLED)
+                            this.openChangeSizeDialog();
+                    }
                 } else if (!this.pointer_moved && !this.disable_expand) { // Clicked the canvas.
                     // this.canvas.style.border = "thick solid #000000"
                     let _this = this;
@@ -675,9 +711,9 @@ class NotateCanvas {
                     site.appendChild(bg);
 
                     // Div wrapper over the DOM canvas:
-                    let bounds = this.canvas.getBoundingClientRect();
+                    const bounds = this.canvas.getBoundingClientRect();
                     const margin = 100;
-                    const scaleX = Math.min((site_bounds.width - margin*2) / bounds.width, (site_bounds.height - 110 - margin*2) / bounds.height);
+                    let scaleX = Math.min((site_bounds.width - margin*2) / bounds.width, (site_bounds.height - 110 - margin*2) / bounds.height);
                     let canvas_wrapper = document.createElement('div');
                     canvas_wrapper.style.position = "absolute";
                     canvas_wrapper.style.display = "block";
@@ -697,8 +733,8 @@ class NotateCanvas {
                     clone.style.display = "block";
                     clone.style.margin = "0";
                     // clone.style.zIndex = "6";
-                    clone.style.left = -(bounds.width)/2 + Math.floor(bounds.width*scaleX)/2 + "px";
-                    clone.style.top  = -(bounds.height)/2 + Math.floor(bounds.height*scaleX)/2 + "px";
+                    clone.style.left = Math.floor(bounds.width*scaleX - bounds.width)/2 + "px";
+                    clone.style.top  = Math.floor(bounds.height*scaleX - bounds.height)/2 + "px";
                     clone.style.width = Math.floor(bounds.width) + "px";
                     clone.style.height = Math.floor(bounds.height) + "px";
                     clone.style.transform = "scale(" + scaleX + "," + scaleX + ")";
@@ -707,10 +743,36 @@ class NotateCanvas {
                     canvas_wrapper.appendChild(clone);
                     // clone.style.transition = "transform 1000ms cubic-bezier(0.165, 0.84, 0.44, 1)";
 
+                    // Resize settings for fullscreen mode:
+                    const fullscreen_resize_settings = Object.freeze({
+                        'right': {
+                            'cursor': 'col-resize',
+                            'borderRight': '1px solid gray',
+                            'borderBottom': '0px solid gray'
+                        },
+                        'bot': {
+                            'cursor': 'row-resize',
+                            'borderRight': '0px solid gray',
+                            'borderBottom': '1px solid gray'
+                        },
+                        'botright': {
+                            'cursor': 'nwse-resize',
+                            'borderRight': '1px solid gray',
+                            'borderBottom': '1px solid gray'
+                        },
+                        'default': {
+                            'border': '0px',
+                            'cursor': 'crosshair'
+                        }
+                    });
+
                     // Add pen-based draw capabilities to canvas w/ draw library code:
                     let notate_clone = NotateCanvasManager.setup(clone);
                     notate_clone.bg_opacity = 1.0;
-                    notate_clone.disable_resize = true;
+                    // notate_clone.disable_resize = true;
+                    // console.log(clone.style.width, scaleX);
+                    notate_clone.resize_thresh = 10;
+                    notate_clone.resize_settings = fullscreen_resize_settings;
                     notate_clone.disable_expand = true;
                     notate_clone.strokes = this.strokes;
                     notate_clone.setPenColor(this.pen_color);
@@ -736,114 +798,6 @@ class NotateCanvas {
                     const div_to_canvas_coord = function(p) {
                         return { x: p.x/scaleX*2, y: p.y/scaleX*2 }; // notate_clone.resolution
                     };
-
-                    // Pointer events for the invisible div that wraps the canvas:
-                    // this handles changing and moving the overlay svg
-                    canvas_wrapper.addEventListener('pointerdown', function(e) {
-                        if (cursorsvg.drag_resize) {
-                            cursorsvg.drag_start = { x: Math.floor(e.offsetX*scaleX) + cursorsvg.offset.x, y: Math.floor(e.offsetY*scaleX) + cursorsvg.offset.y };
-                            cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
-                            cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
-                        }
-                    });
-                    canvas_wrapper.addEventListener('pointermove', function(e) {
-                        if (cursorsvg.drag_resize && cursorsvg.drag_start) {
-                            // Resize svg to fit box made from start point to end point:
-                            const shape = cursorsvg.firstChild.tagName;
-                            let w = e.offsetX*scaleX - cursorsvg.drag_start.x;
-                            let h = e.offsetY*scaleX - cursorsvg.drag_start.y;
-                            cursorsvg.setAttribute("width", Math.max(3,Math.abs(w)) + "px");
-                            cursorsvg.setAttribute("height", Math.max(3,Math.abs(h)) + "px");
-                            if (w < 0) cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
-                            else       cursorsvg.style.left = cursorsvg.drag_start.x;
-                            if (h < 0) cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
-                            else       cursorsvg.style.top = cursorsvg.drag_start.y;
-                            cursorsvg.setAttribute("viewBox", "0 0 " + Math.max(3,Math.abs(w)) + " " + Math.max(3,Math.abs(h)));
-
-                            if (shape == 'line') {
-                                if (h < 0 && w >= 0) {
-                                    cursorsvg.firstChild.setAttribute('y1', "100%");
-                                    cursorsvg.firstChild.setAttribute('y2', "0");
-                                    cursorsvg.firstChild.setAttribute('x1', "0");
-                                    cursorsvg.firstChild.setAttribute('x2', "100%");
-                                } else if (h >= 0 && w < 0) {
-                                    cursorsvg.firstChild.setAttribute('x1', "100%");
-                                    cursorsvg.firstChild.setAttribute('x2', "0");
-                                    cursorsvg.firstChild.setAttribute('y1', "0");
-                                    cursorsvg.firstChild.setAttribute('y2', "100%");
-                                } else {
-                                    cursorsvg.firstChild.setAttribute('x1', "0");
-                                    cursorsvg.firstChild.setAttribute('x2', "100%");
-                                    cursorsvg.firstChild.setAttribute('y1', "0");
-                                    cursorsvg.firstChild.setAttribute('y2', "100%");
-                                }
-                            }
-
-                            // cursorsvg.firstChild.setAttribute("width", w + "px");
-                            // cursorsvg.firstChild.setAttribute("height", h + "px");
-                            cursorsvg.innerHTML += "";
-                            // cursorsvg.drag_end = [e.offsetX*scaleX, e.offsetY*scaleX];
-                        } else {
-                            cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
-                            cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
-                        }
-                    });
-                    canvas_wrapper.addEventListener('pointerup', function(e) {
-                        if (cursorsvg.drag_resize && cursorsvg.drag_start) {
-                            // Commit the dragged shape to canvas:
-                            // 1. Generate strokes that match the dragged shape
-                            let stroke;
-                            const shape = cursorsvg.firstChild.tagName;
-                            if (shape == 'rect') { // Rectangle
-                                const topleft  = div_to_canvas_coord(cursorsvg.drag_start);
-                                const topright = div_to_canvas_coord({x: e.offsetX*scaleX, y: cursorsvg.drag_start.y });
-                                const botleft  = div_to_canvas_coord({x: cursorsvg.drag_start.x, y: e.offsetY*scaleX });
-                                const botright = div_to_canvas_coord({x: e.offsetX*scaleX, y: e.offsetY*scaleX });
-                                stroke     = { pts: [topleft, topright, botright, botleft, topleft],
-                                            weight:4,
-                                             color:notate_clone.pen_color };
-                            } else if (shape == 'ellipse') { // Circle (ellipse)
-                                const weight = 4;
-                                const w = e.offsetX*scaleX - cursorsvg.drag_start.x - weight;
-                                const h = e.offsetY*scaleX - cursorsvg.drag_start.y - weight;
-                                const center = { x:(e.offsetX*scaleX+cursorsvg.drag_start.x)/2,
-                                                 y:(e.offsetY*scaleX+cursorsvg.drag_start.y)/2 };
-                                const segs = 32.0;
-                                const pi2 = Math.PI * 2;
-                                let pts = [];
-                                for (let i = 0; i <= segs; i++) { // Generate the points on a circle
-                                    pts.push( {x: center.x + w/2*Math.cos(i/segs*pi2),
-                                               y: center.y + h/2*Math.sin(i/segs*pi2) } );
-                                }
-                                stroke = { pts: pts.map(div_to_canvas_coord), weight: 4, color: notate_clone.pen_color };
-                            } else { // Line
-                                const endpt = {x: e.offsetX*scaleX, y: e.offsetY*scaleX};
-                                stroke = { pts: [div_to_canvas_coord(cursorsvg.drag_start), div_to_canvas_coord(endpt)],
-                                        weight: 4, color: notate_clone.pen_color};
-                                console.log(stroke.pts);
-                            }
-
-                            // 2. Commit the shape's strokes to canvas
-                            if (notate_clone.stateStack.length === 0)
-                                notate_clone.pushState();
-                            notate_clone.drawStroke(stroke);
-                            notate_clone.pushState();
-
-                            // 3. Reset the dragging box
-                            cursorsvg.drag_start = null;
-                            cursorsvg.setAttribute("width", "16px");
-                            cursorsvg.setAttribute("height", "16px");
-                            cursorsvg.setAttribute("viewBox", "0 0 16 16");
-                            cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
-                            cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
-                        }
-                    });
-                    canvas_wrapper.addEventListener('pointerenter', function(e) {
-                        cursorsvg.style.display = "inline";
-                    });
-                    canvas_wrapper.addEventListener('pointerleave', function(e) {
-                        cursorsvg.style.display = "none";
-                    });
 
                     // canvas_wrapper.innerHTML += '<svg height="30" width="30" style="position:absolute;z-index:7"></svg>';
 
@@ -947,40 +901,197 @@ class NotateCanvas {
                         ['trash', "Clear canvas", ["4px", "3px"]]
                     ];
                     // Generate DIV elements for toolbar based on spec
-                    const leftedge = site_bounds.width/2 - bounds.width/2*scaleX;
-                    const topedge = site_bounds.height/2 - bounds.height/2*scaleX;
                     let tool_btns = tool_btns_specs.map(function(item, i) {
+                        const leftedge = site_bounds.width/2 - bounds.width/2*scaleX;
+                        const topedge = site_bounds.height/2 - bounds.height/2*scaleX;
                         let icon = createIcon(item[0], item[1], item[2]);
                         icon.style.left = (leftedge - 40) + "px";
                         icon.style.top = (topedge + 20 + 40*i) + "px";
                         return icon;
                     });
 
+                    // Background for toolbar
+                    let bg_toolbar = document.createElement('div');
+                    bg_toolbar.style.position = "absolute";
+                    bg_toolbar.style.display = "block";
+                    bg_toolbar.style.width = "48px";
+                    bg_toolbar.style.height = (18 + 40*tool_btns.length) + "px";
+                    bg_toolbar.style.borderRadius = "8px 0px 0px 8px";
+                    bg_toolbar.style.backgroundColor = "#eee";
+                    bg_toolbar.style.zIndex = "6";
+
+                    site.appendChild(bg_toolbar);
+                    tool_btns.forEach((icon, i) => {
+                        site.appendChild(icon);
+                    });
+
+                    let reposition_toolbar = function() {
+                        const leftedge = parseInt(canvas_wrapper.style.left.substring(0, canvas_wrapper.style.left.length-2));
+                        const topedge = parseInt(canvas_wrapper.style.top.substring(0, canvas_wrapper.style.top.length-2));
+                        bg_toolbar.style.left = (leftedge - 48) + "px";
+                        bg_toolbar.style.top = (topedge + 8) + "px";
+                        tool_btns.forEach(function(icon, i) {
+                            icon.style.left = (leftedge - 40) + "px";
+                            icon.style.top = (topedge + 20 + 40*i) + "px";
+                        });
+                    };
+                    reposition_toolbar();
+
                     // Toggle the pencil icon on by default:
                     toggleIcon(tool_btns[0], tool_btns);
 
                     // Spectrum.js library color picker
-                    let color_picker = $('<input id="color-picker" value="' + this.getPenColor() + '" />');
-                    $("body").append(color_picker);
-                    $(color_picker).spectrum({
-                        type: "color",
-                        change: function(clr) {
-                            notate_clone.setPenColor(clr);
-                            _this.setPenColor(clr);
+                    // let color_picker = $('<input id="color-picker" value="' + this.getPenColor() + '" />');
+                    // $("body").append(color_picker);
+                    // $(color_picker).spectrum({
+                    //     type: "color",
+                    //     change: function(clr) {
+                    //         notate_clone.setPenColor(clr);
+                    //         _this.setPenColor(clr);
+                    //     }
+                    // });
+                    // $(".sp-replacer").css({
+                    //     "position": "absolute",
+                    //     "display": "block",
+                    //     "left": (leftedge - 40) + "px",
+                    //     "top": (topedge + 60) + "px",
+                    //     "z-index": "7"
+                    // });
+                    // $(color_picker).click(function(evt) {
+                    //   evt.stopPropagation();
+                    // });
+                    // $(color_picker).keydown(function(evt) {
+                    //   evt.stopPropagation();
+                    // });
+
+                    // Pointer events for the invisible div that wraps the canvas:
+                    // this handles changing and moving the overlay svg
+                    let was_resizing = false;
+                    canvas_wrapper.addEventListener('pointerdown', function(e) {
+                        if (cursorsvg.drag_resize) {
+                            cursorsvg.drag_start = { x: Math.floor(e.offsetX*scaleX) + cursorsvg.offset.x, y: Math.floor(e.offsetY*scaleX) + cursorsvg.offset.y };
+                            cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
+                            cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
                         }
                     });
-                    $(".sp-replacer").css({
-                        "position": "absolute",
-                        "display": "block",
-                        "left": (leftedge - 40) + "px",
-                        "top": (topedge + 60) + "px",
-                        "z-index": "7"
+                    canvas_wrapper.addEventListener('pointermove', function(e) {
+                        if (cursorsvg.drag_resize && cursorsvg.drag_start) {
+                            // Resize svg to fit box made from start point to end point:
+                            const shape = cursorsvg.firstChild.tagName;
+                            let w = e.offsetX*scaleX - cursorsvg.drag_start.x;
+                            let h = e.offsetY*scaleX - cursorsvg.drag_start.y;
+                            cursorsvg.setAttribute("width", Math.max(3,Math.abs(w)) + "px");
+                            cursorsvg.setAttribute("height", Math.max(3,Math.abs(h)) + "px");
+                            if (w < 0) cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
+                            else       cursorsvg.style.left = cursorsvg.drag_start.x;
+                            if (h < 0) cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
+                            else       cursorsvg.style.top = cursorsvg.drag_start.y;
+                            cursorsvg.setAttribute("viewBox", "0 0 " + Math.max(3,Math.abs(w)) + " " + Math.max(3,Math.abs(h)));
+
+                            if (shape == 'line') {
+                                if (h < 0 && w >= 0) {
+                                    cursorsvg.firstChild.setAttribute('y1', "100%");
+                                    cursorsvg.firstChild.setAttribute('y2', "0");
+                                    cursorsvg.firstChild.setAttribute('x1', "0");
+                                    cursorsvg.firstChild.setAttribute('x2', "100%");
+                                } else if (h >= 0 && w < 0) {
+                                    cursorsvg.firstChild.setAttribute('x1', "100%");
+                                    cursorsvg.firstChild.setAttribute('x2', "0");
+                                    cursorsvg.firstChild.setAttribute('y1', "0");
+                                    cursorsvg.firstChild.setAttribute('y2', "100%");
+                                } else {
+                                    cursorsvg.firstChild.setAttribute('x1', "0");
+                                    cursorsvg.firstChild.setAttribute('x2', "100%");
+                                    cursorsvg.firstChild.setAttribute('y1', "0");
+                                    cursorsvg.firstChild.setAttribute('y2', "100%");
+                                }
+                            }
+
+                            // cursorsvg.firstChild.setAttribute("width", w + "px");
+                            // cursorsvg.firstChild.setAttribute("height", h + "px");
+                            cursorsvg.innerHTML += "";
+                            // cursorsvg.drag_end = [e.offsetX*scaleX, e.offsetY*scaleX];
+                        } else if (notate_clone.resizing !== false) {
+                            cursorsvg.style.display = "none";
+                            if (notate_clone.pointer_down)
+                                was_resizing = true;
+                        } else {
+                            if (cursorsvg.style.display != "block")
+                                cursorsvg.style.display = "block";
+                            cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
+                            cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
+                            was_resizing = false;
+                        }
                     });
-                    $(color_picker).click(function(evt) {
-                      evt.stopPropagation();
+                    canvas_wrapper.addEventListener('pointerup', function(e) {
+                        if (was_resizing) {
+                            // ScaleX shouldn't actually change on a resize operation --what changes is the left and top values.
+                            // canvas_wrapper.style.backgroundColor = 'red';
+                            canvas_wrapper.style.width = Math.floor(notate_clone.canvas.width/2*scaleX) + "px";
+                            canvas_wrapper.style.height = Math.floor(notate_clone.canvas.height/2*scaleX) + "px";
+                            // complicated realignment bc of scale()
+                            canvas_wrapper.style.left = (site_bounds.width/2 - clone.width/4*scaleX) + Math.floor(clone.width/2 - bounds.width)/2 + 'px'; // + Math.floor(clone.width/2*scaleX - bounds.width)/2 + "px";
+                            canvas_wrapper.style.top  = (site_bounds.height/2 - clone.height/4*scaleX) + Math.floor(clone.height/2 - bounds.height)/2 + "px";
+                            clone.style.left = Math.floor(clone.width/2*scaleX - bounds.width)/2 - Math.floor(clone.width/2 - bounds.width)/2 + "px";
+                            clone.style.top  = Math.floor(clone.height/2*scaleX - bounds.height)/2 - Math.floor(clone.height/2 - bounds.height)/2 + "px";
+                            // console.log(bounds.width, Math.floor(clone.width/2 - bounds.width)/2, clone.style.left, canvas_wrapper.style.left);
+                            reposition_toolbar();
+                            was_resizing = false;
+                        }
+                        else if (cursorsvg.drag_resize && cursorsvg.drag_start) {
+                            // Commit the dragged shape to canvas:
+                            // 1. Generate strokes that match the dragged shape
+                            let stroke;
+                            const shape = cursorsvg.firstChild.tagName;
+                            if (shape == 'rect') { // Rectangle
+                                const topleft  = div_to_canvas_coord(cursorsvg.drag_start);
+                                const topright = div_to_canvas_coord({x: e.offsetX*scaleX, y: cursorsvg.drag_start.y });
+                                const botleft  = div_to_canvas_coord({x: cursorsvg.drag_start.x, y: e.offsetY*scaleX });
+                                const botright = div_to_canvas_coord({x: e.offsetX*scaleX, y: e.offsetY*scaleX });
+                                stroke     = { pts: [topleft, topright, botright, botleft, topleft],
+                                            weight:4,
+                                             color:notate_clone.pen_color };
+                            } else if (shape == 'ellipse') { // Circle (ellipse)
+                                const weight = 4;
+                                const w = e.offsetX*scaleX - cursorsvg.drag_start.x - weight;
+                                const h = e.offsetY*scaleX - cursorsvg.drag_start.y - weight;
+                                const center = { x:(e.offsetX*scaleX+cursorsvg.drag_start.x)/2,
+                                                 y:(e.offsetY*scaleX+cursorsvg.drag_start.y)/2 };
+                                const segs = 32.0;
+                                const pi2 = Math.PI * 2;
+                                let pts = [];
+                                for (let i = 0; i <= segs; i++) { // Generate the points on a circle
+                                    pts.push( {x: center.x + w/2*Math.cos(i/segs*pi2),
+                                               y: center.y + h/2*Math.sin(i/segs*pi2) } );
+                                }
+                                stroke = { pts: pts.map(div_to_canvas_coord), weight: 4, color: notate_clone.pen_color };
+                            } else { // Line
+                                const endpt = {x: e.offsetX*scaleX, y: e.offsetY*scaleX};
+                                stroke = { pts: [div_to_canvas_coord(cursorsvg.drag_start), div_to_canvas_coord(endpt)],
+                                        weight: 4, color: notate_clone.pen_color};
+                                console.log(stroke.pts);
+                            }
+
+                            // 2. Commit the shape's strokes to canvas
+                            if (notate_clone.stateStack.length === 0)
+                                notate_clone.pushState();
+                            notate_clone.drawStroke(stroke);
+                            notate_clone.pushState();
+
+                            // 3. Reset the dragging box
+                            cursorsvg.drag_start = null;
+                            cursorsvg.setAttribute("width", "16px");
+                            cursorsvg.setAttribute("height", "16px");
+                            cursorsvg.setAttribute("viewBox", "0 0 16 16");
+                            cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
+                            cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
+                        }
                     });
-                    $(color_picker).keydown(function(evt) {
-                      evt.stopPropagation();
+                    canvas_wrapper.addEventListener('pointerenter', function(e) {
+                        cursorsvg.style.display = "inline";
+                    });
+                    canvas_wrapper.addEventListener('pointerleave', function(e) {
+                        cursorsvg.style.display = "none";
                     });
 
                     // Event handlers for toggling toolbar buttons
@@ -1055,22 +1166,6 @@ class NotateCanvas {
                         notate_clone.clear();
                     });
 
-                    // Background for toolbar
-                    let bg_toolbar = document.createElement('div');
-                    bg_toolbar.style.position = "absolute";
-                    bg_toolbar.style.display = "block";
-                    bg_toolbar.style.width = "48px";
-                    bg_toolbar.style.height = (18 + 40*tool_btns.length) + "px";
-                    bg_toolbar.style.borderRadius = "8px 0px 0px 8px";
-                    bg_toolbar.style.backgroundColor = "#eee";
-                    bg_toolbar.style.zIndex = "6";
-                    bg_toolbar.style.left = (leftedge - 48) + "px";
-                    bg_toolbar.style.top = (topedge + 8) + "px";
-
-                    site.appendChild(bg_toolbar);
-                    tool_btns.forEach((icon, i) => {
-                        site.appendChild(icon);
-                    });
 
                     // Exit modal popover when clicking/touching off the canvas:
                     bg.addEventListener('pointerdown', function(e) {
@@ -1085,8 +1180,8 @@ class NotateCanvas {
                         canvas_wrapper.removeChild(clone);
                         site.removeChild(canvas_wrapper);
                         site.removeChild(bg_toolbar);
-                        $(color_picker).spectrum("destroy");
-                        color_picker.remove();
+                        // $(color_picker).spectrum("destroy");
+                        // color_picker.remove();
                         tool_btns.forEach((icon, i) => {
                             site.removeChild(icon);
                         });
@@ -1095,6 +1190,8 @@ class NotateCanvas {
                         // Update parent canvas:
                         this.clear();
                         this.loadFromDataURL(cloneDataURL);
+                        this.stateStack = [];
+                        this.stateIdx = -1;
                         // this.draw();
                     }.bind(this));
                     bg.addEventListener('pointerenter', function(e) {
@@ -1143,8 +1240,8 @@ class NotateCanvas {
                     this.socket.sendDrawing(this.strokes, this.canvas.id);
                 }
             } else {
-                this.canvas.style.border = default_border;
-                this.canvas.style.cursor = "auto";
+                this.canvas.style.border = this.resize_settings.default.border;
+                this.canvas.style.cursor = this.resize_settings.default.cursor;
             }
         }.bind(this);
         this.canvas.addEventListener('pointerenter', pointerEnter);
@@ -1380,7 +1477,7 @@ class NotateCanvas {
                 _this.canvas.width = Math.floor(width) * 2;
                 _this.canvas.style.height = Math.floor(height) + "px";
                 _this.canvas.height = Math.floor(height) * 2;
-                _this.loadFromImage(_this.saved_img, false);
+                _this.loadFromDataURL(_this.saved_img, false);
                 _this.saveMetadataToCell(); // Save resized image to cell metadata
               } else console.error("Entered value is not a positive integer.", width, height)
               $(this).dialog('close');
