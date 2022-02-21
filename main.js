@@ -13,6 +13,31 @@
 // You should have received a copy of the GNU Lesser General Public License v3
 // along with this program.  If not, see <https://www.gnu.org/licenses/lgpl-3.0.en.html>.
 
+// Logging infrastructure
+var Logger = (function() {
+    const ALSO_PRINT_TO_CONSOLE = true;
+    let _log = [];
+    return {
+        log: function(evtname, info) {
+            if (ALSO_PRINT_TO_CONSOLE) console.log(evtname, info);
+            _log.push([Date.now().toString(), evtname, info]);
+        },
+        logCodeCellChange : function(event) {
+            let data = "";
+            if (event.removed.length > 0 && (event.removed[0].length > 0 || event.removed.length > 1))
+                data = "-:"+Date.now().toString()+":"+event.removed.join('\n')+':'+event.from.line+','+event.from.ch+':'+event.to.line+","+event.to.ch;
+            if (event.text.length > 0 && (event.text[0].length > 0 || event.text.length > 1))
+                data = "+:"+Date.now().toString()+":"+event.text.join('\n')+':'+event.from.line+','+event.from.ch+':'+event.to.line+","+event.to.ch;
+            _log.push(data);
+        },
+        getData: function() {
+            return _log;
+        },
+        clear: function() {
+            _log = [];
+        }
+    }
+}());
 
 define([
     'require',
@@ -121,7 +146,6 @@ class NotateArray(np.ndarray):
 
 
       function initialize() {
-        console.log("Loaded spectrum.js");
 
         // events.on('execute.CodeCell', function(evt, data) {
         //     var cell = data.cell;
@@ -130,6 +154,8 @@ class NotateArray(np.ndarray):
         //     console.log('HELLO WORLD', cell, data);
         // });
 
+        Logger.log("Initialize", Jupyter.notebook.notebook_path);
+
         // Incredibly sketchy wrapper over Jupyter saving.
         // Attempts to cleanup excess metadata in cells before saving.
         var origSaveNotebook = Jupyter.notebook.__proto__.save_notebook.bind(Jupyter.notebook);
@@ -137,6 +163,17 @@ class NotateArray(np.ndarray):
             let cells = Jupyter.notebook.get_cells();
             for (let cell of cells)
                 cleanupCellMetadata(cell);
+
+            // Append log data as metadata to first cell of the notebook
+            // (could be any cell really)
+            if (cells.length > 0) {
+                // Append general log
+                if ('log' in cells[0].metadata) // Append to existing
+                    cells[0].metadata['log'] = cells[0].metadata['log'].concat(Logger.getData());
+                else // Create new entry to metadata to store logs
+                    cells[0].metadata['log'] = Logger.getData();
+            }
+
             origSaveNotebook();
         };
 
@@ -311,6 +348,7 @@ class NotateArray(np.ndarray):
 
             // Insert new canvas on Ctrl+Enter key press:
             cm.addKeyMap({"Ctrl-\\":function(cm) {
+
                 // Create new HTML canvas element + setup
                 let canvas = create_canvas(600, 240);
 
@@ -319,6 +357,8 @@ class NotateArray(np.ndarray):
 
                 // Insert canvas at cursor position in current cell
                 let c = insert_canvas_at_cursor(cm, canvas);
+
+                Logger.log("Created new canvas with Ctrl-\\", "id:"+c.idx);
 
                 // Index canvas for future reference
                 canvases[c.idx] = notate_canvas;
@@ -329,7 +369,12 @@ class NotateArray(np.ndarray):
             // Paste a canvas somewhere else
             let just_pasted = false;
             cm.on('change', function(cm, event) { // 'After paste' event
+
+                // Log change to code cell
+                Logger.logCodeCellChange(event);
+
                 if (just_pasted !== false) {
+                    let txt = just_pasted;
 
                     // Search the text for matches of NotateCanvas id's.
                     // Replace all matches with corresponding canvas elements.
@@ -348,6 +393,8 @@ class NotateArray(np.ndarray):
                                     continue;
 
                                 console.log('Found match for', id, 'at selection', from, to);
+
+                                Logger.log("Pasted", "canvas_duplicated:"+id);
 
                                 // Replace this match with a unique ID.
                                 let new_id = uniqueCanvasId();
@@ -381,12 +428,23 @@ class NotateArray(np.ndarray):
                     just_pasted = false;
                 }
             });
+            cm.on('copy', function(cm, event) {
+                let txt = window.getSelection().toString(); // kind of a hack, but the following 'correct' way doesn't work: event.clipboardData.getData("text");
+                Logger.log("Copied", "raw_text:"+txt);
+            });
+            cm.on('cut', function(cm, event) {
+                let txt = window.getSelection().toString(); // kind of a hack, but the following 'correct' way doesn't work: event.clipboardData.getData("text");
+                Logger.log("Cut", "raw_text:"+txt);
+            });
             cm.on('paste', function(cm, event) {
                 let items = event.clipboardData.items;
+                // Support for pasting an image:
                 if (items.length > 1 && items[1]["kind"] === "file" && items[1]["type"].includes("image/")) {
 
                     let imageBlob = items[1].getAsFile();
                     let canvas = create_canvas(600, 400);
+
+                    Logger.log("Pasted", "image_from_clipboard");
 
                     // Create NotateCanvas and attach event handlers
                     let notate_canvas = NotateCanvasManager.setup(canvas);
@@ -406,8 +464,9 @@ class NotateArray(np.ndarray):
                     notate_canvas.idx = c.idx;
                     notate_canvas.cell = cell;
                 }
-                txt = event.clipboardData.getData("text");
+                let txt = event.clipboardData.getData("text");
                 console.log("pasted!", txt);
+                Logger.log("Pasted", "raw_text:"+txt);
                 just_pasted = txt;
             });
         };
@@ -557,16 +616,19 @@ class NotateCanvas {
 
         // Attach pointer event listeners
         let pointerEnter = function pointerEnter(e) {
+            Logger.log(this.getName(), 'pointerenter:'+e.pointerType);
             let _this = this;
             if (!this.disable_expand)
                 this.canvas.style.border = this.resize_settings.default.border;
             this.saved_img = this.toDataURL();
         }.bind(this);
         let pointerDown = function pointerDown(e) {
+            Logger.log(this.getName(), 'pointerdown:'+e.pointerType);
             this.pointer_down = true;
             this.pointer_moved = false;
 
             if (this.resizing && e.pointerType === "mouse") {
+                Logger.log(this.getName(), 'start_resizing:'+e.pointerType+';'+this.canvas.style.width+';'+this.canvas.style.height);
                 e.preventDefault();
                 return;
             }
@@ -584,6 +646,8 @@ class NotateCanvas {
             // Create new stroke and attach reference
             let s = { pts: [this.getPointerValue(e)], weight:this.pen_weight, color:this.pen_color };
             this.new_strokes[e.pointerId] = s;
+
+            Logger.log(this.getName(), 'start_drawing:'+e.pointerType);
 
             this.drawStroke(s);
         }.bind(this);
@@ -671,15 +735,21 @@ class NotateCanvas {
                     e.preventDefault();
                 }
             }
+            else {
+                Logger.log(this.getName(), 'pointerleave:'+e.pointerType);
+            }
             if (!this.disable_expand)
                 this.canvas.style.border = this.resize_settings.default.border;
         }.bind(this);
         let pointerUp = function pointerUp(e) {
+            Logger.log(this.getName(), 'pointerup:'+e.pointerType);
+
             // Skip if drawing is disabled
             if (this.disable_drawing) return;
 
             if (this.pointer_down) {
                 if (this.resizing !== false) { // End of resizing canvas operation.
+                    Logger.log(this.getName(), 'finish_resize:'+e.pointerType+';'+this.canvas.style.width+';'+this.canvas.style.height);
                     if (this.pointer_moved) {
 
                         const num_states = this.stateStack.length;
@@ -691,9 +761,10 @@ class NotateCanvas {
                         if (this.CHANGESIZE_DIALOG_ENABLED)
                             this.openChangeSizeDialog();
                     }
-                } else if (!this.pointer_moved && !this.disable_expand) { // Clicked the canvas.
-                    // this.canvas.style.border = "thick solid #000000"
+                } else if (!this.pointer_moved && !this.disable_expand) { // Clicked the canvas: expand to fullscreen.
                     let _this = this;
+
+                    Logger.log("Fullscreen mode", "entered:"+this.getName());
 
                     // A black, translucent background for the popover:
                     let site = document.getElementsByTagName("BODY")[0];
@@ -969,6 +1040,7 @@ class NotateCanvas {
                     let was_resizing = false;
                     canvas_wrapper.addEventListener('pointerdown', function(e) {
                         if (cursorsvg.drag_resize) {
+                            Logger.log("Fullscreen mode", "drag_tool:pointerdown:" + e.pointerType);
                             cursorsvg.drag_start = { x: Math.floor(e.offsetX*scaleX) + cursorsvg.offset.x, y: Math.floor(e.offsetY*scaleX) + cursorsvg.offset.y };
                             cursorsvg.style.left = e.offsetX*scaleX + cursorsvg.offset.x;
                             cursorsvg.style.top = e.offsetY*scaleX + cursorsvg.offset.y;
@@ -976,6 +1048,8 @@ class NotateCanvas {
                     });
                     canvas_wrapper.addEventListener('pointermove', function(e) {
                         if (cursorsvg.drag_resize && cursorsvg.drag_start) {
+                            // Logger.log("Fullscreen mode", "drag_tool:pointermove:" + e.pointerType);
+
                             // Resize svg to fit box made from start point to end point:
                             const shape = cursorsvg.firstChild.tagName;
                             let w = e.offsetX*scaleX - cursorsvg.drag_start.x;
@@ -1012,6 +1086,7 @@ class NotateCanvas {
                             cursorsvg.innerHTML += "";
                             // cursorsvg.drag_end = [e.offsetX*scaleX, e.offsetY*scaleX];
                         } else if (notate_clone.resizing !== false) {
+                            // Logger.log("Fullscreen mode", "resize_canvas:pointermove:" + e.pointerType);
                             cursorsvg.style.display = "none";
                             if (notate_clone.pointer_down)
                                 was_resizing = true;
@@ -1025,6 +1100,7 @@ class NotateCanvas {
                     });
                     canvas_wrapper.addEventListener('pointerup', function(e) {
                         if (was_resizing) {
+                            Logger.log("Fullscreen mode", "resize_canvas:pointerup:" + e.pointerType);
                             // ScaleX shouldn't actually change on a resize operation --what changes is the left and top values.
                             // canvas_wrapper.style.backgroundColor = 'red';
                             canvas_wrapper.style.width = Math.floor(notate_clone.canvas.width/2*scaleX) + "px";
@@ -1039,6 +1115,8 @@ class NotateCanvas {
                             was_resizing = false;
                         }
                         else if (cursorsvg.drag_resize && cursorsvg.drag_start) {
+                            Logger.log("Fullscreen mode", "drag_tool:pointerup:" + e.pointerType);
+
                             // Commit the dragged shape to canvas:
                             // 1. Generate strokes that match the dragged shape
                             let stroke;
@@ -1096,6 +1174,8 @@ class NotateCanvas {
 
                     // Event handlers for toggling toolbar buttons
                     attachEvents(tool_btns[0], function() { // Pencil
+                        Logger.log("Toolbar", "toggled:pencil");
+
                         notate_clone.setPenColor('#000');
                         notate_clone.setPenWeight(2);
                         notate_clone.disable_drawing = false;
@@ -1108,6 +1188,8 @@ class NotateCanvas {
                         toggleIcon(tool_btns[0], tool_btns);
                     });
                     attachEvents(tool_btns[1], function() { // Rectangle tool
+                        Logger.log("Toolbar", "toggled:rect");
+
                         notate_clone.disable_drawing = true; // disable direct pen drawing mode
                         cursorsvg.setAttribute("width", "16px");
                         cursorsvg.setAttribute("height", "16px");
@@ -1118,6 +1200,8 @@ class NotateCanvas {
                         toggleIcon(tool_btns[1], tool_btns);
                     });
                     attachEvents(tool_btns[2], function() { // Circle tool
+                        Logger.log("Toolbar", "toggled:circle");
+
                         notate_clone.disable_drawing = true; // disable direct pen drawing mode
                         cursorsvg.setAttribute("width", "16px");
                         cursorsvg.setAttribute("height", "16px");
@@ -1128,6 +1212,8 @@ class NotateCanvas {
                         toggleIcon(tool_btns[2], tool_btns);
                     });
                     attachEvents(tool_btns[3], function() { // Line tool
+                        Logger.log("Toolbar", "toggled:line");
+
                         notate_clone.disable_drawing = true; // disable direct pen drawing mode
                         cursorsvg.setAttribute("width", "16px");
                         cursorsvg.setAttribute("height", "16px");
@@ -1138,6 +1224,8 @@ class NotateCanvas {
                         toggleIcon(tool_btns[3], tool_btns);
                     });
                     attachEvents(tool_btns[4], function() { // Eraser
+                        Logger.log("Toolbar", "toggled:eraser");
+
                         notate_clone.setPenColor('erase'); // erase is a special setting
                         notate_clone.setPenWeight(6);
                         notate_clone.disable_drawing = false;
@@ -1150,6 +1238,8 @@ class NotateCanvas {
                         toggleIcon(tool_btns[4], tool_btns);
                     });
                     attachEvents(tool_btns[5], function() { // Undo
+                        Logger.log("Toolbar", "toggled:undo");
+
                         // UNDO --SPECIAL CODE HERE
                         notate_clone.revertState();
                         // if (notate_clone.stateIdx <= 0) {
@@ -1158,10 +1248,14 @@ class NotateCanvas {
                         // }
                     });
                     attachEvents(tool_btns[6], function() { // Redo
+                        Logger.log("Toolbar", "toggled:redo");
+
                         // REDO --SPECIAL CODE HERE
                         notate_clone.advanceState();
                     });
                     attachEvents(tool_btns[7], function() { // Trash
+                        Logger.log("Toolbar", "toggled:trash");
+
                         notate_clone.strokes = [];
                         notate_clone.clear();
                     });
@@ -1170,6 +1264,8 @@ class NotateCanvas {
                     // Exit modal popover when clicking/touching off the canvas:
                     bg.addEventListener('pointerdown', function(e) {
                         //if (e.pointerType === "pen") return;
+
+                        Logger.log("Fullscreen mode", "exiting:"+e.pointerType);
 
                         // Transfer strokes back to the parent canvas:
                         this.strokes = notate_clone.strokes;
@@ -1197,6 +1293,8 @@ class NotateCanvas {
                     bg.addEventListener('pointerenter', function(e) {
                         //if (e.pointerType === "pen") return;
 
+                        Logger.log("Fullscreen bg", "pointerenter:" + e.pointerType);
+
                         notate_clone.canvas.style.opacity = 0.5;
                         bg.style.opacity = 0.2;
                         cursorsvg.style.display = "none";
@@ -1204,6 +1302,8 @@ class NotateCanvas {
                     }.bind(this));
                     bg.addEventListener('pointerleave', function(e) {
                         //if (e.pointerType === "pen") return;
+
+                        Logger.log("Fullscreen bg", "pointerleave:" + e.pointerType);
 
                         // For some reason the canvas element doesn't redraw on some platforms if opacity is set to 1.0.
                         // So I first set it to 0.99 to force the DOM redraw.
@@ -1224,6 +1324,7 @@ class NotateCanvas {
 
             // If pointer draw event is being tracked
             if (e.pointerId in this.new_strokes) {
+                Logger.log(this.getName(), 'finish_drawing:'+e.pointerType);
 
                 // Move stroke into the main strokes array:
                 this.strokes.push( this.new_strokes[e.pointerId] );
@@ -1327,6 +1428,7 @@ class NotateCanvas {
         this.cell.metadata['notate_canvi'][this.idx] = this.canvas.toDataURL();
         console.log('Saved to cell', this.cell, 'for canvas with idx', this.idx);
     }
+    getName() { return 'canvas:' + (this.idx ? this.idx : "(undefined)"); }
     getPointerValue(e) {
         return {
           x: (e.offsetX - this.pos.x) * this.resolution,
