@@ -283,14 +283,19 @@ class NotateArray(np.ndarray):
 
                     // Log output
                     const output = cells.cell.output_area.outputs;
-                    if (output.length > 0) {
-                        const outtype = output[0].output_type;
+                    output.forEach(function(out) {
+                        const outtype = out.output_type;
                         if (outtype == 'error') { // The cell errored while executing, spitting out an execution error msg
-                            Logger.log('Execution:error:'+output[0].ename+':'+output[0].evalue, output[0].traceback.join('~~~'));
+                            Logger.log('Execution:'+outtype+":"+out.ename+':'+out.evalue, out.traceback.join('\n\n\n'));
                         } else {
-                            Logger.log('Execution:output', ('data' in output[0] && 'text/plain' in output[0].data ? output[0].data['text/plain'] : '(unknown)'));
+                            let text = "(unknown)";
+                            if ('data' in out && 'text/plain' in out.data)
+                                text = out.data['text/plain'];
+                            else if ('text' in out)
+                                text = out.text;
+                            Logger.log('Execution:'+outtype, text);
                         }
-                    }
+                    });
                     // Cleanup --Remove our custom cb from events
                     cells.cell.events.off('finished_execute.CodeCell', output_cb);
                 };
