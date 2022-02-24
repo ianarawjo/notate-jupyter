@@ -156,6 +156,15 @@ class NotateArray(np.ndarray):
 
         Logger.log("Initialize", Jupyter.notebook.notebook_path);
 
+        // Attach window focus change callbacks
+        window.onfocus = function () {
+            Logger.log("Window", "focused")
+        };
+        window.onblur = function () {
+            Logger.log('Window', "blurred");
+        };
+
+
         // Incredibly sketchy wrapper over Jupyter saving.
         // Attempts to cleanup excess metadata in cells before saving.
         var origSaveNotebook = Jupyter.notebook.__proto__.save_notebook.bind(Jupyter.notebook);
@@ -218,6 +227,7 @@ class NotateArray(np.ndarray):
             // to 'send' to corresponding Python variables:
             let data_urls = {};
             let code = PYCODE_SETUP;// 'import base64\nimport numpy as np\nfrom io import BytesIO\nfrom PIL import Image\n';
+            let injected_code = false;
             for (let idx of activatedCanvasIds) {
                 if (!(idx in canvases)) {
                     console.warn('@ Run cell: Could not find a notate canvas with id', idx, 'Skipping...');
@@ -225,9 +235,14 @@ class NotateArray(np.ndarray):
                 }
                 data_urls[idx] = canvases[idx].toOpaqueDataURL().split(',')[1];
                 code += idx + '=np.array(Image.open(BytesIO(base64.b64decode("' + data_urls[idx] + '"))).convert("RGB"), dtype="uint8")\n';
+                injected_code = true;
             }
 
-            // Insert artificial code into cell
+            // Log the original val of get_text
+            // if (injected_code) Logger.log("Silent execute", code);
+            Logger.log("Execute:cell", cell.get_text());
+
+            // Alter 'get_text' to insert artificial code into cell where canvases are
             cell.get_text = function() {
                 let raw_code = this.code_mirror.getValue();
                 let lines = raw_code.split("\n");
@@ -251,12 +266,40 @@ class NotateArray(np.ndarray):
             // First run some background code silently to setup the environment
             // for this cell. The __*__ canvases will become numpy 2d arrays (images)
             run_code_silently(code, function () {
+                // Call execute_cell(), which triggers our hijacked get_text() method
                 cb();
 
                 // Repair the old get_text so nothing funny happens:
                 cell.get_text = function() {
                     return this.code_mirror.getValue();
                 }.bind(cell);
+
+                // Wait for output and log it
+                let output_cb = function(event, cells) {
+                    if (!('cell' in cells)) {
+                        console.warn('@ finished_execute callback: Could not determine executed cell.');
+                        return;
+                    }
+
+                    // Log output
+                    const output = cells.cell.output_area.outputs;
+                    output.forEach(function(out) {
+                        const outtype = out.output_type;
+                        if (outtype == 'error') { // The cell errored while executing, spitting out an execution error msg
+                            Logger.log('Execution:'+outtype+":"+out.ename+':'+out.evalue, out.traceback.join('\n\n\n'));
+                        } else {
+                            let text = "(unknown)";
+                            if ('data' in out && 'text/plain' in out.data)
+                                text = out.data['text/plain'];
+                            else if ('text' in out)
+                                text = out.text;
+                            Logger.log('Execution:'+outtype, text);
+                        }
+                    });
+                    // Cleanup --Remove our custom cb from events
+                    cells.cell.events.off('finished_execute.CodeCell', output_cb);
+                };
+                cell.events.on('finished_execute.CodeCell', output_cb);
             });
         }
         var shortcuts = {
