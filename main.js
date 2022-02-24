@@ -612,15 +612,19 @@ class NotateCanvas {
         this.pointer_moved = false;
         this.disable_drawing = false;
 
+        this.saved_img = null;
+        this._is_dirty = false;
+        this._resize_canvas_copy = null;
+
         this.new_strokes = {};
 
         // Attach pointer event listeners
         let pointerEnter = function pointerEnter(e) {
             Logger.log(this.getName(), 'pointerenter:'+e.pointerType);
-            let _this = this;
             if (!this.disable_expand)
                 this.canvas.style.border = this.resize_settings.default.border;
-            this.saved_img = this.toDataURL();
+            if (this.saved_img === null)
+                this.saved_img = this.toDataURL();
         }.bind(this);
         let pointerDown = function pointerDown(e) {
             Logger.log(this.getName(), 'pointerdown:'+e.pointerType);
@@ -629,6 +633,14 @@ class NotateCanvas {
 
             if (this.resizing && e.pointerType === "mouse") {
                 Logger.log(this.getName(), 'start_resizing:'+e.pointerType+';'+this.canvas.style.width+';'+this.canvas.style.height);
+
+                // create backing canvas
+                let backCanvas = document.createElement('canvas');
+                backCanvas.width = this.canvas.width;
+                backCanvas.height = this.canvas.height;
+                backCanvas.getContext('2d').drawImage(this.canvas, 0, 0);
+                this._resize_canvas_copy = backCanvas;
+
                 e.preventDefault();
                 return;
             }
@@ -681,9 +693,8 @@ class NotateCanvas {
                     this.canvas.height = Math.floor(e.offsetY + d) * 2;
                 }
 
-                const num_states = this.stateStack.length;
-                if (num_states > 0) this.loadFromDataURL(this.stateStack[num_states-1], false, false);
-                else                this.loadFromDataURL(this.saved_img, false);
+                // After resize, we have to redraw the pre-resize contents of the canvas:
+                this.canvas.getContext('2d').drawImage(this._resize_canvas_copy, 0, 0);
 
             } else if (!this.disable_resize) {
                 // Bottom-right resize
@@ -728,9 +739,8 @@ class NotateCanvas {
                         this.canvas.height = Math.floor(e.offsetY + d) * 2;
                     }
 
-                    const num_states = this.stateStack.length;
-                    if (num_states > 0) this.loadFromDataURL(this.stateStack[num_states-1], false, false);
-                    else                this.loadFromDataURL(this.saved_img, false);
+                    // After resize, we have to redraw the pre-resize contents of the canvas:
+                    this.canvas.getContext('2d').drawImage(this._resize_canvas_copy, 0, 0);
 
                     e.preventDefault();
                 }
@@ -752,10 +762,11 @@ class NotateCanvas {
                     Logger.log(this.getName(), 'finish_resize:'+e.pointerType+';'+this.canvas.style.width+';'+this.canvas.style.height);
                     if (this.pointer_moved) {
 
-                        const num_states = this.stateStack.length;
-                        if (num_states > 0) this.loadFromDataURL(this.stateStack[num_states-1], false, false);
-                        else                this.loadFromDataURL(this.saved_img, false);
+                        // After resize, we have to redraw the pre-resize contents of the canvas:
+                        this.canvas.getContext('2d').drawImage(this._resize_canvas_copy, 0, 0);
 
+                        this.saved_img = this.toDataURL();
+                        this.pushState(this.saved_img);
                         this.saveMetadataToCell(); // Save resized image to cell metadata
                     } else { // Open modal input asking for specific width/height pixel values
                         if (this.CHANGESIZE_DIALOG_ENABLED)
@@ -1375,20 +1386,26 @@ class NotateCanvas {
         canvas.getContext("2d").drawImage(img, 0, 0);
     }
     loadFromDataURL(dataURL, changeSize=true, pushState=false) {
-        let img = new Image();
-        let canvas = this.canvas;
-        img.addEventListener("load", function () {
-            if (changeSize) {
-                canvas.width = img.width;
-                canvas.height = img.height;
-                canvas.style.width = img.width/2+"px";
-                canvas.style.height = img.height/2+"px";
-            }
-            canvas.getContext("2d").drawImage(img, 0, 0);
+        this._is_dirty = true;
+        let _this = this;
+        return new Promise(function (resolve, reject) {
+            let img = new Image();
+            let canvas = _this.canvas;
+            img.addEventListener("load", function () {
+                if (changeSize) {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    canvas.style.width = img.width/2+"px";
+                    canvas.style.height = img.height/2+"px";
+                }
+                canvas.getContext("2d").drawImage(img, 0, 0);
+                _this._is_dirty = false;
+                resolve();
+            });
+            if (pushState)
+                _this.pushState(dataURL);
+            img.setAttribute("src", dataURL);
         });
-        if (pushState)
-            this.pushState(dataURL);
-        img.setAttribute("src", dataURL);
     }
     toImage() {
         const src = this.toDataURL();
