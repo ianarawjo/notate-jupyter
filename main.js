@@ -302,18 +302,33 @@ class NotateArray(np.ndarray):
                 cell.events.on('finished_execute.CodeCell', output_cb);
             });
         }
-        var shortcuts = {
-          'ctrl-enter': function(pager, evt) {
-              let cell = Jupyter.notebook.get_selected_cell();
-              runCodeForCell(cell, function() { Jupyter.notebook.execute_cell(); });
-          },
-          'shift-enter': function(pager, evt) {
-              let cell = Jupyter.notebook.get_selected_cell();
-              runCodeForCell(cell, function() { Jupyter.notebook.execute_cell_and_select_below(); });
-          }
+
+
+        // var origExecuteCell = Jupyter.notebook.__proto__.execute_cells.bind(Jupyter.notebook);
+        // Jupyter.notebook.__proto__.execute_cells = function() {
+        //     console.log("heloooo");
+        //     let cell = Jupyter.notebook.get_selected_cell();
+        //     runCodeForCell(cell, origExecuteCell);
+        // };
+
+        // Hijack the core "execute" method for running code in cells. 
+        Jupyter.CodeCell.prototype.__execute = Jupyter.CodeCell.prototype.execute;
+        Jupyter.CodeCell.prototype.execute = function(stop_on_error) {
+          runCodeForCell(this, this.__execute.bind(this));
         };
-        Jupyter.notebook.keyboard_manager.edit_shortcuts.add_shortcuts(shortcuts);
-        Jupyter.notebook.keyboard_manager.command_shortcuts.add_shortcuts(shortcuts);
+
+        // var shortcuts = {
+        //   'ctrl-enter': function(pager, evt) {
+        //       let cell = Jupyter.notebook.get_selected_cell();
+        //       runCodeForCell(cell, function() { Jupyter.notebook.execute_cell(); });
+        //   },
+        //   'shift-enter': function(pager, evt) {
+        //       let cell = Jupyter.notebook.get_selected_cell();
+        //       runCodeForCell(cell, function() { Jupyter.notebook.execute_cell_and_select_below(); });
+        //   }
+        // };
+        // Jupyter.notebook.keyboard_manager.edit_shortcuts.add_shortcuts(shortcuts);
+        // Jupyter.notebook.keyboard_manager.command_shortcuts.add_shortcuts(shortcuts);
 
         // Canvas generation functions
         function create_canvas(width, height) {
