@@ -35,6 +35,17 @@ var Logger = (function() {
         },
         clear: function() {
             _log = [];
+            return true;
+        },
+        clearCache: function() {
+            _log = [];
+            const cells = Jupyter.notebook.get_cells();
+            if (cells.length > 0) {
+                // Append general log
+                if ('log' in cells[0].metadata)
+                    cells[0].metadata['log'] = [];
+            }
+            return true;
         }
     }
 }());
@@ -311,7 +322,7 @@ class NotateArray(np.ndarray):
         //     runCodeForCell(cell, origExecuteCell);
         // };
 
-        // Hijack the core "execute" method for running code in cells. 
+        // Hijack the core "execute" method for running code in cells.
         Jupyter.CodeCell.prototype.__execute = Jupyter.CodeCell.prototype.execute;
         Jupyter.CodeCell.prototype.execute = function(stop_on_error) {
           runCodeForCell(this, this.__execute.bind(this));
