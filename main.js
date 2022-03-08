@@ -1255,7 +1255,6 @@ class NotateCanvas {
                     // Event handlers for toggling toolbar buttons
                     attachEvents(tool_btns[0], function() { // Pencil
                         Logger.log("Toolbar", "toggled:pencil");
-
                         notate_clone.setPenColor('#000');
                         notate_clone.setPenWeight(2);
                         notate_clone.disable_drawing = false;
@@ -1269,7 +1268,8 @@ class NotateCanvas {
                     });
                     attachEvents(tool_btns[1], function() { // Rectangle tool
                         Logger.log("Toolbar", "toggled:rect");
-
+                        notate_clone.setPenColor('#000');
+                        notate_clone.setPenWeight(2);
                         notate_clone.disable_drawing = true; // disable direct pen drawing mode
                         cursorsvg.setAttribute("width", "16px");
                         cursorsvg.setAttribute("height", "16px");
@@ -1281,7 +1281,8 @@ class NotateCanvas {
                     });
                     attachEvents(tool_btns[2], function() { // Circle tool
                         Logger.log("Toolbar", "toggled:circle");
-
+                        notate_clone.setPenColor('#000');
+                        notate_clone.setPenWeight(2);
                         notate_clone.disable_drawing = true; // disable direct pen drawing mode
                         cursorsvg.setAttribute("width", "16px");
                         cursorsvg.setAttribute("height", "16px");
@@ -1293,7 +1294,8 @@ class NotateCanvas {
                     });
                     attachEvents(tool_btns[3], function() { // Line tool
                         Logger.log("Toolbar", "toggled:line");
-
+                        notate_clone.setPenColor('#000');
+                        notate_clone.setPenWeight(2);
                         notate_clone.disable_drawing = true; // disable direct pen drawing mode
                         cursorsvg.setAttribute("width", "16px");
                         cursorsvg.setAttribute("height", "16px");
@@ -1305,7 +1307,6 @@ class NotateCanvas {
                     });
                     attachEvents(tool_btns[4], function() { // Eraser
                         Logger.log("Toolbar", "toggled:eraser");
-
                         notate_clone.setPenColor('erase'); // erase is a special setting
                         notate_clone.setPenWeight(6);
                         notate_clone.disable_drawing = false;
