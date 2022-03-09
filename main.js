@@ -395,7 +395,7 @@ class NotateArray(np.ndarray):
                     while(cursor.findNext()) {
                         // We've found a match. Insert canvas at position + populate it:
                         // Create new HTML canvas element + setup
-                        let canvas = create_canvas(600, 240);
+                        let canvas = create_canvas(600, 340);
 
                         // Create NotateCanvas and attach event handlers
                         let notate_canvas = NotateCanvasManager.setup(canvas);
@@ -419,7 +419,7 @@ class NotateArray(np.ndarray):
             cm.addKeyMap({"Ctrl-\\":function(cm) {
 
                 // Create new HTML canvas element + setup
-                let canvas = create_canvas(600, 240);
+                let canvas = create_canvas(600, 340);
 
                 // Create NotateCanvas and attach event handlers
                 let notate_canvas = NotateCanvasManager.setup(canvas);
@@ -474,7 +474,7 @@ class NotateArray(np.ndarray):
 
                                 // Insert new canvas at position + populate it:
                                 // Create new HTML canvas element + setup
-                                let canvas = create_canvas(600, 240);
+                                let canvas = create_canvas(600, 340);
                                 let copied_notate_canvas = canvases[id].clone(canvas);
                                 // Add cloned canvas to manager
                                 NotateCanvasManager.add(copied_notate_canvas);
@@ -511,7 +511,7 @@ class NotateArray(np.ndarray):
                 if (items.length > 1 && items[1]["kind"] === "file" && items[1]["type"].includes("image/")) {
 
                     let imageBlob = items[1].getAsFile();
-                    let canvas = create_canvas(600, 400);
+                    let canvas = create_canvas(600, 340);
 
                     Logger.log("Pasted", "image_from_clipboard");
 
