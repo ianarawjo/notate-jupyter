@@ -399,7 +399,7 @@ class NotateArray(np.ndarray):
                     while(cursor.findNext()) {
                         // We've found a match. Insert canvas at position + populate it:
                         // Create new HTML canvas element + setup
-                        let canvas = create_canvas(600, 240);
+                        let canvas = create_canvas(600, 340);
 
                         // Create NotateCanvas and attach event handlers
                         let notate_canvas = NotateCanvasManager.setup(canvas);
@@ -423,7 +423,7 @@ class NotateArray(np.ndarray):
             cm.addKeyMap({"Ctrl-\\":function(cm) {
 
                 // Create new HTML canvas element + setup
-                let canvas = create_canvas(600, 240);
+                let canvas = create_canvas(600, 340);
 
                 // Create NotateCanvas and attach event handlers
                 let notate_canvas = NotateCanvasManager.setup(canvas);
@@ -482,7 +482,7 @@ class NotateArray(np.ndarray):
 
                                 // Insert new canvas at position + populate it:
                                 // Create new HTML canvas element + setup
-                                let canvas = create_canvas(600, 240);
+                                let canvas = create_canvas(600, 340);
                                 let copied_notate_canvas = canvases[id].clone(canvas);
                                 // Add cloned canvas to manager
                                 NotateCanvasManager.add(copied_notate_canvas);
@@ -519,7 +519,7 @@ class NotateArray(np.ndarray):
                 if (items.length > 1 && items[1]["kind"] === "file" && items[1]["type"].includes("image/")) {
 
                     let imageBlob = items[1].getAsFile();
-                    let canvas = create_canvas(600, 400);
+                    let canvas = create_canvas(600, 340);
 
                     Logger.log("Pasted", "image_from_clipboard");
 
@@ -1264,7 +1264,6 @@ class NotateCanvas {
                     // Event handlers for toggling toolbar buttons
                     attachEvents(tool_btns[0], function() { // Pencil
                         Logger.log("Toolbar", "toggled:pencil");
-
                         notate_clone.setPenColor('#000');
                         notate_clone.setPenWeight(2);
                         notate_clone.disable_drawing = false;
@@ -1278,7 +1277,8 @@ class NotateCanvas {
                     });
                     attachEvents(tool_btns[1], function() { // Rectangle tool
                         Logger.log("Toolbar", "toggled:rect");
-
+                        notate_clone.setPenColor('#000');
+                        notate_clone.setPenWeight(2);
                         notate_clone.disable_drawing = true; // disable direct pen drawing mode
                         cursorsvg.setAttribute("width", "16px");
                         cursorsvg.setAttribute("height", "16px");
@@ -1290,7 +1290,8 @@ class NotateCanvas {
                     });
                     attachEvents(tool_btns[2], function() { // Circle tool
                         Logger.log("Toolbar", "toggled:circle");
-
+                        notate_clone.setPenColor('#000');
+                        notate_clone.setPenWeight(2);
                         notate_clone.disable_drawing = true; // disable direct pen drawing mode
                         cursorsvg.setAttribute("width", "16px");
                         cursorsvg.setAttribute("height", "16px");
@@ -1302,7 +1303,8 @@ class NotateCanvas {
                     });
                     attachEvents(tool_btns[3], function() { // Line tool
                         Logger.log("Toolbar", "toggled:line");
-
+                        notate_clone.setPenColor('#000');
+                        notate_clone.setPenWeight(2);
                         notate_clone.disable_drawing = true; // disable direct pen drawing mode
                         cursorsvg.setAttribute("width", "16px");
                         cursorsvg.setAttribute("height", "16px");
@@ -1314,7 +1316,6 @@ class NotateCanvas {
                     });
                     attachEvents(tool_btns[4], function() { // Eraser
                         Logger.log("Toolbar", "toggled:eraser");
-
                         notate_clone.setPenColor('erase'); // erase is a special setting
                         notate_clone.setPenWeight(6);
                         notate_clone.disable_drawing = false;
