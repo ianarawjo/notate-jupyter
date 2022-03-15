@@ -13,6 +13,47 @@
 // You should have received a copy of the GNU Lesser General Public License v3
 // along with this program.  If not, see <https://www.gnu.org/licenses/lgpl-3.0.en.html>.
 
+// Logging infrastructure
+var Logger = (function() {
+    const ALSO_PRINT_TO_CONSOLE = true;
+    let _log = [];
+    return {
+        log: function(evtname, info) {
+            if (ALSO_PRINT_TO_CONSOLE) console.log(evtname, info);
+            _log.push([Date.now().toString(), evtname, info]);
+        },
+        logCodeCellChange : function(event) {
+            let data = "";
+            if (event.removed.length > 0 && (event.removed[0].length > 0 || event.removed.length > 1))
+                data = "-:"+Date.now().toString()+":"+event.removed.join('\n')+':'+event.from.line+','+event.from.ch+':'+event.to.line+","+event.to.ch;
+            if (event.text.length > 0 && (event.text[0].length > 0 || event.text.length > 1))
+                data = "+:"+Date.now().toString()+":"+event.text.join('\n')+':'+event.from.line+','+event.from.ch+':'+event.to.line+","+event.to.ch;
+            _log.push(data);
+        },
+        lastLogType: function() {
+            if (_log.length === 0) return "event";
+            return typeof _log[_log.length-1] === "string" ? "code_edit" : "event";
+        },
+        getData: function() {
+            return _log;
+        },
+        clear: function() {
+            _log = [];
+            return true;
+        },
+        clearCache: function() {
+            _log = [];
+            const cells = Jupyter.notebook.get_cells();
+            if (cells.length > 0) {
+                // Append general log
+                if ('log' in cells[0].metadata)
+                    cells[0].metadata['log'] = [];
+            }
+            return true;
+        }
+    }
+}());
+
 define([
     'require',
     'jquery',
@@ -38,47 +79,6 @@ class NotateArray(np.ndarray):
         if obj is None: return
         self.locals = getattr(obj, 'locals', None)
 `;
-
-        // Logging infrastructure
-        var Logger = (function() {
-            const ALSO_PRINT_TO_CONSOLE = true;
-            let _log = [];
-            return {
-                log: function(evtname, info) {
-                    if (ALSO_PRINT_TO_CONSOLE) console.log(evtname, info);
-                    _log.push([Date.now().toString(), evtname, info]);
-                },
-                logCodeCellChange : function(event) {
-                    let data = "";
-                    if (event.removed.length > 0 && (event.removed[0].length > 0 || event.removed.length > 1))
-                        data = "-:"+Date.now().toString()+":"+event.removed.join('\n')+':'+event.from.line+','+event.from.ch+':'+event.to.line+","+event.to.ch;
-                    if (event.text.length > 0 && (event.text[0].length > 0 || event.text.length > 1))
-                        data = "+:"+Date.now().toString()+":"+event.text.join('\n')+':'+event.from.line+','+event.from.ch+':'+event.to.line+","+event.to.ch;
-                    _log.push(data);
-                },
-                lastLogType: function() {
-                    if (_log.length === 0) return "event";
-                    return typeof _log[_log.length-1] === "string" ? "code_edit" : "event";
-                },
-                getData: function() {
-                    return _log;
-                },
-                clear: function() {
-                    _log = [];
-                    return true;
-                },
-                clearCache: function() {
-                    _log = [];
-                    const cells = Jupyter.notebook.get_cells();
-                    if (cells.length > 0) {
-                        // Append general log
-                        if ('log' in cells[0].metadata)
-                            cells[0].metadata['log'] = [];
-                    }
-                    return true;
-                }
-            }
-        }());
 
       // For keeping track of canvases and copy-paste function:
       var canvases = {};
