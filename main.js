@@ -56,6 +56,10 @@ class NotateArray(np.ndarray):
                         data = "+:"+Date.now().toString()+":"+event.text.join('\n')+':'+event.from.line+','+event.from.ch+':'+event.to.line+","+event.to.ch;
                     _log.push(data);
                 },
+                lastLogType: function() {
+                    if (_log.length === 0) return "event";
+                    return typeof _log[_log.length-1] === "string" ? "code_edit" : "event";
+                },
                 getData: function() {
                     return _log;
                 },
@@ -440,6 +444,10 @@ class NotateArray(np.ndarray):
             let just_pasted = false;
             cm.on('change', function(cm, event) { // 'After paste' event
 
+                // Log a snapshot of the text in the cell at the start of editing the code
+                if (Logger.lastLogType() !== "code_edit")
+                    Logger.log("Editing:cell:begin", cell.get_text());
+
                 // Log change to code cell
                 Logger.logCodeCellChange(event);
 
@@ -736,6 +744,7 @@ class NotateCanvas {
         let pointerMove = function pointerMove(e) {
             // Skip if drawing is disabled
             if (this.disable_drawing) return;
+            else if (e.pointerType === "touch") return; // disable move events on touch
 
             let pos = this.getPointerValue(e);
             this.pointer_moved = true;
