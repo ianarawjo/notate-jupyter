@@ -1396,8 +1396,11 @@ class NotateCanvas {
                         NotateCanvasManager.remove(notate_clone);
 
                         // Update parent canvas:
+                        const _that = this;
                         this.clear();
-                        this.loadFromDataURL(cloneDataURL);
+                        this.loadFromDataURL(cloneDataURL).then(function() {
+                            _that.saveMetadataToCell();
+                        });
                         this.stateStack = [];
                         this.stateIdx = -1;
                         // this.draw();
