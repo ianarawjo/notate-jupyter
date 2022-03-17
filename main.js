@@ -709,7 +709,7 @@ class NotateCanvas {
             this.pointer_down = true;
             this.pointer_moved = false;
 
-            if (this.resizing && e.pointerType === "mouse") {
+            if (this.resizing && e.pointerType !== "touch") {
                 Logger.log(this.getName(), 'start_resizing:'+e.pointerType+';'+this.canvas.style.width+';'+this.canvas.style.height);
 
                 // create backing canvas
