@@ -1098,6 +1098,18 @@ class NotateCanvas {
                     };
                     reposition_toolbar();
 
+                    let realign_svg = function() {
+                        // ScaleX shouldn't actually change on a resize operation --what changes is the left and top values.
+                        // canvas_wrapper.style.backgroundColor = 'red';
+                        canvas_wrapper.style.width = Math.floor(notate_clone.canvas.width/2*scaleX) + "px";
+                        canvas_wrapper.style.height = Math.floor(notate_clone.canvas.height/2*scaleX) + "px";
+                        // complicated realignment bc of scale()
+                        canvas_wrapper.style.left = (site_bounds.width/2 - clone.width/4*scaleX) + Math.floor(clone.width/2 - bounds.width)/2 + 'px'; // + Math.floor(clone.width/2*scaleX - bounds.width)/2 + "px";
+                        canvas_wrapper.style.top  = (site_bounds.height/2 - clone.height/4*scaleX) + Math.floor(clone.height/2 - bounds.height)/2 + "px";
+                        clone.style.left = Math.floor(clone.width/2*scaleX - bounds.width)/2 - Math.floor(clone.width/2 - bounds.width)/2 + "px";
+                        clone.style.top  = Math.floor(clone.height/2*scaleX - bounds.height)/2 - Math.floor(clone.height/2 - bounds.height)/2 + "px";
+                    };
+
                     // Toggle the pencil icon on by default:
                     toggleIcon(tool_btns[0], tool_btns);
 
@@ -1191,15 +1203,7 @@ class NotateCanvas {
                     canvas_wrapper.addEventListener('pointerup', function(e) {
                         if (was_resizing) {
                             Logger.log("Fullscreen mode", "resize_canvas:pointerup:" + e.pointerType);
-                            // ScaleX shouldn't actually change on a resize operation --what changes is the left and top values.
-                            // canvas_wrapper.style.backgroundColor = 'red';
-                            canvas_wrapper.style.width = Math.floor(notate_clone.canvas.width/2*scaleX) + "px";
-                            canvas_wrapper.style.height = Math.floor(notate_clone.canvas.height/2*scaleX) + "px";
-                            // complicated realignment bc of scale()
-                            canvas_wrapper.style.left = (site_bounds.width/2 - clone.width/4*scaleX) + Math.floor(clone.width/2 - bounds.width)/2 + 'px'; // + Math.floor(clone.width/2*scaleX - bounds.width)/2 + "px";
-                            canvas_wrapper.style.top  = (site_bounds.height/2 - clone.height/4*scaleX) + Math.floor(clone.height/2 - bounds.height)/2 + "px";
-                            clone.style.left = Math.floor(clone.width/2*scaleX - bounds.width)/2 - Math.floor(clone.width/2 - bounds.width)/2 + "px";
-                            clone.style.top  = Math.floor(clone.height/2*scaleX - bounds.height)/2 - Math.floor(clone.height/2 - bounds.height)/2 + "px";
+                            realign_svg();
                             // console.log(bounds.width, Math.floor(clone.width/2 - bounds.width)/2, clone.style.left, canvas_wrapper.style.left);
                             reposition_toolbar();
                             was_resizing = false;
@@ -1331,8 +1335,17 @@ class NotateCanvas {
                     attachEvents(tool_btns[5], function() { // Undo
                         Logger.log("Toolbar", "toggled:undo");
 
+                        let last_w = notate_clone.canvas.style.width;
+                        let last_h = notate_clone.canvas.style.height;
+
                         // UNDO --SPECIAL CODE HERE
-                        notate_clone.revertState();
+                        notate_clone.revertState().then(function() {
+                            if (notate_clone.canvas.style.width !== last_w || notate_clone.canvas.style.height !== last_h) {
+                                realign_svg();
+                                reposition_toolbar();
+                            }
+                        });
+
                         // if (notate_clone.stateIdx <= 0) {
                         //     tool_btns[5].style.color = "gray";
                         //     tool_btns[5].disabled = true;
@@ -1341,8 +1354,16 @@ class NotateCanvas {
                     attachEvents(tool_btns[6], function() { // Redo
                         Logger.log("Toolbar", "toggled:redo");
 
+                        let last_w = notate_clone.canvas.style.width;
+                        let last_h = notate_clone.canvas.style.height;
+
                         // REDO --SPECIAL CODE HERE
-                        notate_clone.advanceState();
+                        notate_clone.advanceState().then(function() {
+                            if (notate_clone.canvas.style.width !== last_w || notate_clone.canvas.style.height !== last_h) {
+                                realign_svg();
+                                reposition_toolbar();
+                            }
+                        });
                     });
                     attachEvents(tool_btns[7], function() { // Trash
                         Logger.log("Toolbar", "toggled:trash");
@@ -1598,7 +1619,7 @@ class NotateCanvas {
 
         // Advance forward one state
         this.stateIdx += 1;
-        this.loadFromDataURL(this.stateStack[this.stateIdx]);
+        return this.loadFromDataURL(this.stateStack[this.stateIdx]);
     }
     revertState() {
         // Check if the stack exists:
@@ -1608,7 +1629,7 @@ class NotateCanvas {
         // Revert back one state, while leaving the
         // stateStack untouched in case the user presses Redo:
         this.stateIdx -= 1;
-        this.loadFromDataURL(this.stateStack[this.stateIdx]);
+        return this.loadFromDataURL(this.stateStack[this.stateIdx]);
     }
 
     // Drawing to the canvas
