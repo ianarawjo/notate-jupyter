@@ -726,7 +726,7 @@ class NotateCanvas {
                 console.warn('A stroke is already being drawn with this id. Did you forget to cancel?');
                 return;
             } else if (e.pointerType === "touch") {
-                this.canvas.style.border = "thick solid #000000"
+                this.canvas.style.border = "thin solid #222"
                 return;
             }
 
