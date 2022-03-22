@@ -1375,6 +1375,10 @@ class NotateCanvas {
 
                     // Exit modal popover when clicking/touching off the canvas:
                     bg.addEventListener('pointerdown', function(e) {
+                        // Naive palm rejection: if user is currently drawing with the pen,
+                        // ignore touch-based pointer events on the bg: 
+                        if (e.pointerType === "touch" && notate_clone.pointer_down)
+                            return;
                         //if (e.pointerType === "pen") return;
 
                         Logger.log("Fullscreen mode", "exiting:"+e.pointerType);
