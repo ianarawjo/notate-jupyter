@@ -1376,7 +1376,7 @@ class NotateCanvas {
                     // Exit modal popover when clicking/touching off the canvas:
                     bg.addEventListener('pointerdown', function(e) {
                         // Naive palm rejection: if user is currently drawing with the pen,
-                        // ignore touch-based pointer events on the bg: 
+                        // ignore touch-based pointer events on the bg:
                         if (e.pointerType === "touch" && notate_clone.pointer_down)
                             return;
                         //if (e.pointerType === "pen") return;
@@ -1651,6 +1651,7 @@ class NotateCanvas {
 
         // Set color and line width values
         const weight = ('weight' in s) ? s.weight : this.default_linewidth;
+        const arc = this.ctx.globalCompositeOperation === 'destination-out';
         this.ctx.lineWidth = weight;
         if ('color' in s) this.ctx.strokeStyle = s.color;
 
@@ -1665,6 +1666,12 @@ class NotateCanvas {
             this.ctx.lineTo(q.x, q.y);
             this.ctx.closePath();
             this.ctx.stroke();
+
+            if (arc) {
+                this.ctx.fillStyle = '#000000';
+                this.ctx.arc(p.x,p.y,weight*2,0,Math.PI*2,false);
+                this.ctx.fill();
+            }
         }
     }
 
